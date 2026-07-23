@@ -1,0 +1,5 @@
+# Optional heavy dependencies for running Gemma locally via HuggingFace transformers.
+# Not required for the Ollama backend or the offline mock backend.
+transformers>=4.42.0
+torch>=2.2.0
+accelerate>=0.30.0

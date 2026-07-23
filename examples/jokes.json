@@ -1,0 +1,38 @@
+[
+  {
+    "id": "dad-scarecrow",
+    "label": "Classic dad joke",
+    "joke": "Why did the scarecrow win an award? Because he was outstanding in his field.",
+    "note": "Pure wordplay — great for showing the 'wordplay' mechanism and split audience fit."
+  },
+  {
+    "id": "tech-darkmode",
+    "label": "Tech in-joke",
+    "joke": "I switched my whole life to dark mode. My electricity bill didn't change, but my personality finally matches my terminal.",
+    "note": "Relies on developer culture; should score high for 'Tech crowd', low for 'Corporate all-hands'."
+  },
+  {
+    "id": "observational-airport",
+    "label": "Observational",
+    "joke": "Airport security is the only place where a stranger yells at you for being bad at getting undressed quickly.",
+    "note": "Observational + mild taboo; broadly relatable."
+  },
+  {
+    "id": "self-deprecating",
+    "label": "Self-deprecating one-liner",
+    "joke": "I told my therapist about my fear of commitment. We're still deciding whether to keep meeting.",
+    "note": "Self-deprecation + misdirection; good warmth score."
+  },
+  {
+    "id": "weak-pun",
+    "label": "Deliberately weak (for contrast)",
+    "joke": "I like pizza. Pizza is good. Do you like pizza too?",
+    "note": "Intentionally NOT funny — demonstrates the engine scoring something low and explaining why."
+  },
+  {
+    "id": "anti-joke",
+    "label": "Anti-joke",
+    "joke": "Why did the chicken cross the road? To get to the other side.",
+    "note": "Anti-joke: subverts the expectation of a subversion. Great 'understanding' talking point."
+  }
+]
