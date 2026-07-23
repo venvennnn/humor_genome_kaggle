@@ -11,6 +11,9 @@ import json
 import re
 from typing import List, Optional
 
+import os
+import tempfile
+
 from .gemma_client import GemmaClient, GemmaConfig
 from .genome import (
     GENOME_AXES,
@@ -18,8 +21,11 @@ from .genome import (
     GenomeDimension,
     AudienceFit,
     PunchUp,
+    ReactionMoment,
+    VideoBeat,
+    VideoHumorReport,
 )
-from .prompts import SYSTEM_PROMPT, analysis_prompt, punchup_prompt
+from .prompts import SYSTEM_PROMPT, analysis_prompt, punchup_prompt, video_prompt
 
 DEFAULT_AUDIENCES = [
     "Close friends",
@@ -181,3 +187,127 @@ class HumorGenomeEngine:
             mechanism_changed=str(data.get("mechanism_changed", "")),
             why_better=str(data.get("why_better", "")),
         )
+
+    # ------------------------------------------------------------- video path
+    def analyze_video(
+        self,
+        video_path: str,
+        transcript: str = "",
+        n_frames: int = 6,
+    ) -> VideoHumorReport:
+        """Analyze a comedy clip: detect audience reactions, then have Gemma
+        explain why each beat did or didn't land.
+
+        Degrades gracefully: if ffmpeg is unavailable it still runs on the
+        transcript alone; frames are only used when the backend is multimodal.
+        """
+        from . import laughter as laughter_mod
+        from . import video as video_mod
+
+        report = VideoHumorReport(source=os.path.basename(video_path))
+        tmpdir = tempfile.mkdtemp(prefix="humor_video_")
+
+        reactions: list[ReactionMoment] = []
+        frame_paths: list[str] = []
+        want_frames = self.client.supports_images and n_frames > 0
+
+        try:
+            report.duration_s = video_mod.probe_duration(video_path)
+        except Exception:
+            report.duration_s = 0.0
+
+        # 1) audio -> reaction timeline
+        try:
+            wav = video_mod.extract_audio_wav(
+                video_path, os.path.join(tmpdir, "audio.wav")
+            )
+            waveform, rate = laughter_mod.read_wav_mono(wav)
+            reactions = laughter_mod.detect_reactions(waveform, rate)
+        except Exception:
+            reactions = []
+
+        # 2) frames for multimodal reasoning
+        if want_frames:
+            try:
+                frame_paths = video_mod.extract_frames(video_path, tmpdir, n=n_frames)
+            except Exception:
+                frame_paths = []
+
+        # 3) transcript (SRT/VTT/plain)
+        plain, _cues = video_mod.parse_transcript(transcript)
+
+        report.reactions = reactions
+        report.frames_analyzed = len(frame_paths)
+        report.multimodal_used = bool(frame_paths)
+        report.transcript = plain
+        report.has_transcript = bool(plain)
+        report.laugh_coverage = laughter_mod.laugh_coverage(reactions, report.duration_s)
+        report.biggest_laugh_s = laughter_mod.biggest_laugh(reactions)
+
+        reactions_desc = (
+            "\n".join(
+                f"- {r.start_s:.2f}s-{r.end_s:.2f}s (intensity {r.intensity:.2f})"
+                for r in reactions
+            )
+            or "- (no audience reactions detected in the audio)"
+        )
+
+        prompt = video_prompt(
+            transcript=plain,
+            reactions_desc=reactions_desc,
+            duration_s=report.duration_s,
+            n_frames=len(frame_paths),
+            has_frames=bool(frame_paths),
+        )
+        raw = self.client.generate(
+            prompt, system=SYSTEM_PROMPT, images=frame_paths or None
+        )
+        report.raw_model_output = raw
+
+        try:
+            data = _extract_json(raw)
+        except ValueError:
+            report.overall_summary = "(could not parse model output)"
+            return report
+
+        report.overall_summary = str(data.get("overall_summary", ""))
+
+        def _as_list(v):
+            if isinstance(v, list):
+                return [str(x) for x in v]
+            return [str(v)] if v else []
+
+        report.what_worked = _as_list(data.get("what_worked"))
+        report.what_fell_flat = _as_list(data.get("what_fell_flat"))
+
+        for b in data.get("beats", []):
+            if not isinstance(b, dict):
+                continue
+            start_s = _num(b.get("start_s"))
+            end_s = _num(b.get("end_s"))
+            beat = VideoBeat(
+                start_s=start_s,
+                end_s=end_s,
+                moment=str(b.get("moment", "")),
+                is_joke=bool(b.get("is_joke", True)),
+                landed=bool(b.get("landed", False)),
+                mechanism=str(b.get("mechanism", "")),
+                explanation=str(b.get("explanation", "")),
+            )
+            beat.audience_reaction = round(
+                10.0 * self._reaction_near(reactions, start_s, end_s), 1
+            )
+            report.beats.append(beat)
+
+        return report
+
+    @staticmethod
+    def _reaction_near(
+        reactions: list, start_s: float, end_s: float, window: float = 4.0
+    ) -> float:
+        """Peak reaction intensity (0-1) occurring within a beat or shortly after."""
+        best = 0.0
+        for r in reactions:
+            if r.end_s >= start_s and r.start_s <= end_s + window:
+                best = max(best, r.intensity)
+        return best

@@ -137,8 +137,65 @@ def _mock_punchup(joke: str, audience: str) -> str:
     return json.dumps(payload)
 
 
+def _mock_video(prompt: str) -> str:
+    # parse measured reactions like "- 12.30s-13.10s (intensity 0.87)"
+    reacts = re.findall(r"([\d.]+)s\s*[-–]\s*([\d.]+)s\s*\(intensity\s*([\d.]+)\)", prompt)
+    transcript = _extract_between(prompt, "TRANSCRIPT:")
+    words = re.findall(r"[A-Za-z']+", transcript)
+
+    beats = []
+    for idx, (start, end, inten) in enumerate(reacts):
+        s, e, it = float(start), float(end), float(inten)
+        # grab a slice of transcript as the "moment" if we have text
+        moment = (
+            " ".join(words[idx * 6 : idx * 6 + 8])
+            if words else f"beat around {s:.0f}s"
+        )
+        beats.append({
+            "start_s": max(0.0, s - 3.0),
+            "end_s": e,
+            "moment": moment or f"beat around {s:.0f}s",
+            "is_joke": True,
+            "landed": it >= 0.4,
+            "mechanism": "misdirection" if idx % 2 == 0 else "act-out",
+            "explanation": f"[mock] Measured a reaction at {s:.1f}s (intensity {it:.2f}); the payoff broke the setup's expectation.",
+        })
+
+    if not beats:
+        beats.append({
+            "start_s": 0.0,
+            "end_s": 5.0,
+            "moment": " ".join(words[:8]) if words else "opening",
+            "is_joke": True,
+            "landed": False,
+            "mechanism": "observational",
+            "explanation": "[mock] No audience reactions were detected in the audio; likely flat or a non-comedic segment.",
+        })
+
+    landed = sum(1 for b in beats if b["landed"])
+    payload = {
+        "overall_summary": (
+            f"[mock] Detected {len(reacts)} audience reaction(s) across the clip; "
+            f"{landed}/{len(beats)} beats landed. Heuristic analysis — connect a "
+            f"multimodal Gemma (gemma3n) backend for real reasoning."
+        ),
+        "beats": beats,
+        "what_worked": [
+            f"[mock] Beats with measured laughs at "
+            + ", ".join(f"{float(s):.0f}s" for s, _, _ in reacts) if reacts
+            else "[mock] (no measured laughs)",
+        ],
+        "what_fell_flat": [
+            "[mock] Segments with no detected reaction — check setup clarity/timing.",
+        ],
+    }
+    return json.dumps(payload)
+
+
 def mock_response(prompt: str) -> str:
     """Route a prompt to the right mock generator based on its content."""
+    if "comedy video clip" in prompt:
+        return _mock_video(prompt)
     if "Rewrite the following joke" in prompt:
         joke = _extract_between(prompt, "ORIGINAL JOKE:")
         m = re.search(r'this audience:\s*"([^"]+)"', prompt)

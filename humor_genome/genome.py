@@ -109,3 +109,63 @@ class PunchUp:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+# ---------------------------------------------------------------------- video
+
+
+@dataclass
+class ReactionMoment:
+    """A detected audience reaction (laughter/applause) in a video's audio."""
+
+    start_s: float
+    end_s: float
+    intensity: float  # 0-1 normalized energy of the burst
+    kind: str = "laughter/applause"
+
+    @property
+    def duration(self) -> float:
+        return max(0.0, self.end_s - self.start_s)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class VideoBeat:
+    """One comedic beat/moment in a clip and how the audience responded."""
+
+    start_s: float
+    end_s: float
+    moment: str = ""            # what happens / the line delivered
+    is_joke: bool = True
+    landed: bool = False        # did the audience actually laugh?
+    audience_reaction: float = 0.0  # 0-10 measured reaction strength
+    mechanism: str = ""         # comedic mechanism, if it is a joke
+    explanation: str = ""       # WHY it landed or fell flat
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class VideoHumorReport:
+    """Full analysis of a comedy video clip."""
+
+    source: str
+    duration_s: float = 0.0
+    transcript: str = ""
+    has_transcript: bool = False
+    frames_analyzed: int = 0
+    multimodal_used: bool = False
+    reactions: List[ReactionMoment] = field(default_factory=list)
+    laugh_coverage: float = 0.0   # fraction of clip time under a reaction
+    biggest_laugh_s: float = 0.0  # timestamp of the strongest reaction
+    beats: List[VideoBeat] = field(default_factory=list)
+    overall_summary: str = ""
+    what_worked: List[str] = field(default_factory=list)
+    what_fell_flat: List[str] = field(default_factory=list)
+    raw_model_output: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)

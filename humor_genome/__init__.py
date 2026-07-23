@@ -12,7 +12,15 @@ Public API:
 
 from .gemma_client import GemmaClient, GemmaConfig, BackendUnavailable
 from .engine import HumorGenomeEngine
-from .genome import GenomeReport, GenomeDimension, PunchUp, AudienceFit
+from .genome import (
+    GenomeReport,
+    GenomeDimension,
+    PunchUp,
+    AudienceFit,
+    ReactionMoment,
+    VideoBeat,
+    VideoHumorReport,
+)
 
 __all__ = [
     "GemmaClient",
@@ -23,6 +31,9 @@ __all__ = [
     "GenomeDimension",
     "PunchUp",
     "AudienceFit",
+    "ReactionMoment",
+    "VideoBeat",
+    "VideoHumorReport",
 ]
 
 __version__ = "0.1.0"

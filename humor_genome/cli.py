@@ -59,6 +59,39 @@ def _print_report(report: GenomeReport) -> None:
         print(f"  {a.audience:<20} {a.verdict:<16} {a.score:>4}/10  {a.reasoning}")
 
 
+def _print_video_report(backend: str, report) -> None:
+    print(f"[backend: {backend}]\n")
+    print("=" * 64)
+    print(f"CLIP: {report.source}  ({report.duration_s:.0f}s)")
+    print("=" * 64)
+    print(f"Laughs detected: {len(report.reactions)}  |  "
+          f"coverage: {report.laugh_coverage * 100:.0f}%  |  "
+          f"biggest laugh @ {report.biggest_laugh_s:.1f}s  |  "
+          f"frames→Gemma: {report.frames_analyzed}")
+    print(f"\n> {report.overall_summary}\n")
+
+    if report.reactions:
+        print("Measured audience reactions:")
+        for r in report.reactions:
+            print(f"  {r.start_s:>6.1f}s–{r.end_s:<6.1f}s  intensity {r.intensity:.2f}  {_bar(r.intensity * 10)}")
+
+    print("\nBeat-by-beat:")
+    for b in report.beats:
+        status = "LANDED " if b.landed else "no laugh"
+        print(f"  [{b.start_s:>5.1f}–{b.end_s:<5.1f}s] {status}  react {b.audience_reaction:>4}/10  ({b.mechanism})")
+        print(f"      moment: {b.moment}")
+        print(f"      why:    {b.explanation}")
+
+    if report.what_worked:
+        print("\nWhat worked:")
+        for w in report.what_worked:
+            print(f"  + {w}")
+    if report.what_fell_flat:
+        print("\nWhat fell flat:")
+        for w in report.what_fell_flat:
+            print(f"  - {w}")
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="humor_genome",
@@ -69,6 +102,8 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--list-examples", action="store_true", help="list bundled examples")
     parser.add_argument("--backend", default=None, help="auto|ollama|hf|mock")
     parser.add_argument("--punchup", metavar="AUDIENCE", help="also punch up the joke for AUDIENCE")
+    parser.add_argument("--video", metavar="PATH", help="analyze a comedy video clip instead of a joke")
+    parser.add_argument("--transcript", metavar="PATH", help="transcript file (.txt/.srt/.vtt) for --video")
     parser.add_argument("--json", action="store_true", help="emit JSON instead of pretty text")
     args = parser.parse_args(argv)
 
@@ -77,6 +112,28 @@ def main(argv: Optional[list] = None) -> int:
     if args.list_examples:
         for ex in examples:
             print(f"{ex['id']:<22} {ex['label']:<28} {ex['joke'][:50]}...")
+        return 0
+
+    config = GemmaConfig(backend=args.backend) if args.backend else None
+
+    if args.video:
+        engine = HumorGenomeEngine(config=config)
+        transcript = ""
+        if args.transcript:
+            try:
+                with open(args.transcript, "r", encoding="utf-8") as f:
+                    transcript = f.read()
+            except OSError as e:
+                print(f"Could not read transcript: {e}", file=sys.stderr)
+                return 2
+        report = engine.analyze_video(args.video, transcript=transcript)
+        if args.json:
+            print(json.dumps(
+                {"backend": engine.describe_backend(), "report": report.to_dict()},
+                indent=2,
+            ))
+        else:
+            _print_video_report(engine.describe_backend(), report)
         return 0
 
     joke = args.joke
@@ -91,7 +148,6 @@ def main(argv: Optional[list] = None) -> int:
         parser.print_help()
         return 2
 
-    config = GemmaConfig(backend=args.backend) if args.backend else None
     engine = HumorGenomeEngine(config=config)
 
     report = engine.analyze(joke)

@@ -63,6 +63,66 @@ Rules:
 - Return ONLY the JSON object, nothing else."""
 
 
+def video_prompt(
+    transcript: str,
+    reactions_desc: str,
+    duration_s: float,
+    n_frames: int,
+    has_frames: bool,
+) -> str:
+    """Prompt for analyzing a comedy clip.
+
+    We give Gemma the transcript (if any), the MEASURED audience-reaction
+    timeline (from audio), and — for multimodal backends — sampled frames. The
+    measured reactions let the model ground "did they laugh?" in real data
+    instead of guessing.
+    """
+    frame_note = (
+        f"You are also shown {n_frames} still frames sampled evenly across the clip. "
+        "Use them for physical/visual comedy, facial expressions, and context."
+        if has_frames
+        else "No video frames are available; reason from the transcript and reactions."
+    )
+    transcript_block = (
+        f'TRANSCRIPT:\n"""{transcript}"""'
+        if transcript
+        else "TRANSCRIPT: (none provided — infer content from frames/reactions where possible)"
+    )
+    return f"""You are analyzing a {duration_s:.0f}-second comedy video clip to explain WHY it is (or isn't) funny and WHY the audience did or didn't laugh.
+
+{transcript_block}
+
+MEASURED AUDIENCE REACTIONS (detected from the audio track — timestamps where the crowd laughs/applauds, with 0-1 intensity):
+{reactions_desc}
+
+{frame_note}
+
+Break the clip into comedic BEATS. For each beat decide whether it is a joke, whether the audience actually laughed (cross-reference the measured reactions), and explain the comedic mechanism and WHY it landed or fell flat.
+
+Return ONLY a JSON object with EXACTLY these keys:
+{{
+  "overall_summary": "2-3 sentences: what kind of comedy this is and how it performed",
+  "beats": [
+    {{
+      "start_s": <number>,
+      "end_s": <number>,
+      "moment": "what happens / the line delivered",
+      "is_joke": <true|false>,
+      "landed": <true|false, grounded in the measured reactions>,
+      "mechanism": "<comedic mechanism, e.g. misdirection/act-out/callback/taboo/absurdism>",
+      "explanation": "WHY it landed (what expectation was violated) or WHY it fell flat"
+    }}
+  ],
+  "what_worked": ["concrete reasons the laughs happened"],
+  "what_fell_flat": ["moments that got no reaction and why"]
+}}
+
+Rules:
+- Ground "landed" in the measured reactions: a beat landed if a reaction occurs at/just after it.
+- If a beat is a joke but got no measured laugh, set landed=false and explain the likely reason (timing, unclear setup, wrong audience, cultural reference).
+- Return ONLY the JSON object, nothing else."""
+
+
 def punchup_prompt(joke: str, audience: str, weak_axes: List[str]) -> str:
     """Prompt that asks Gemma to rewrite a joke for a target audience."""
     weak = ", ".join(weak_axes) if weak_axes else "overall punch"

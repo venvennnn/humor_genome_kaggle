@@ -8,13 +8,17 @@ the sidebar selector or the HUMOR_GENOME_BACKEND env var.
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 import plotly.graph_objects as go
 import streamlit as st
 
 from humor_genome.data import load_examples
 from humor_genome.engine import HumorGenomeEngine, DEFAULT_AUDIENCES
 from humor_genome.gemma_client import GemmaConfig
-from humor_genome.genome import GENOME_AXES, GenomeReport
+from humor_genome.genome import GENOME_AXES, GenomeReport, VideoHumorReport
+from humor_genome.video import ffmpeg_available
 
 st.set_page_config(
     page_title="Why'd They Laugh?",
@@ -111,11 +115,176 @@ def render_report(report: GenomeReport) -> None:
         bar_cols[2].progress(min(1.0, a.score / 10), text=a.reasoning)
 
 
+def reaction_timeline_chart(report: VideoHumorReport) -> go.Figure:
+    fig = go.Figure()
+    # measured audience reactions as shaded bursts
+    for r in report.reactions:
+        fig.add_shape(
+            type="rect",
+            x0=r.start_s, x1=r.end_s, y0=0, y1=r.intensity,
+            fillcolor="rgba(22,163,74,0.35)", line=dict(width=0),
+        )
+    if report.reactions:
+        fig.add_trace(
+            go.Scatter(
+                x=[(r.start_s + r.end_s) / 2 for r in report.reactions],
+                y=[r.intensity for r in report.reactions],
+                mode="markers", marker=dict(color="#16a34a", size=9),
+                name="laugh/applause",
+            )
+        )
+    # beats as markers on a lower lane
+    for b in report.beats:
+        color = "#16a34a" if b.landed else "#dc2626"
+        fig.add_trace(
+            go.Scatter(
+                x=[(b.start_s + b.end_s) / 2], y=[-0.08],
+                mode="markers",
+                marker=dict(symbol="triangle-up", size=13, color=color),
+                name="beat", showlegend=False,
+                hovertext=b.moment, hoverinfo="text",
+            )
+        )
+    fig.update_layout(
+        height=260, margin=dict(l=30, r=20, t=20, b=30),
+        xaxis_title="time (s)", yaxis_title="reaction intensity",
+        yaxis=dict(range=[-0.15, 1.05]), showlegend=False,
+    )
+    return fig
+
+
+def render_video_report(report: VideoHumorReport) -> None:
+    m = st.columns(4)
+    m[0].metric("Duration", f"{report.duration_s:.0f}s")
+    m[1].metric("Laughs detected", len(report.reactions))
+    m[2].metric("Laugh coverage", f"{report.laugh_coverage * 100:.0f}%")
+    m[3].metric("Biggest laugh @", f"{report.biggest_laugh_s:.1f}s")
+
+    if report.overall_summary:
+        st.markdown(f"#### 🎬 {report.overall_summary}")
+
+    st.markdown("##### 📈 Audience reaction timeline")
+    st.caption(
+        "Green = measured laughter/applause (from the audio). "
+        "Triangles = comedic beats (green landed, red fell flat)."
+    )
+    st.plotly_chart(reaction_timeline_chart(report), use_container_width=True)
+
+    if not report.multimodal_used:
+        st.info(
+            "Frames were not sent to a model (active backend can't see images, "
+            "or none were extracted). Connect a multimodal Gemma — **gemma3n** — "
+            "to add visual/physical-comedy reasoning."
+        )
+
+    st.markdown("##### 🎯 Beat-by-beat")
+    for b in report.beats:
+        icon = "😂" if b.landed else "🦗"
+        with st.expander(
+            f"{icon} {b.start_s:.1f}–{b.end_s:.1f}s · "
+            f"{'LANDED' if b.landed else 'no laugh'} · reaction {b.audience_reaction}/10"
+        ):
+            st.markdown(f"**Moment:** {b.moment}")
+            if b.mechanism:
+                st.markdown(f"**Mechanism:** {b.mechanism}")
+            st.markdown(f"**Why:** {b.explanation}")
+
+    cols = st.columns(2)
+    with cols[0]:
+        st.markdown("##### ✅ What worked")
+        for w in report.what_worked or ["—"]:
+            st.markdown(f"- {w}")
+    with cols[1]:
+        st.markdown("##### 🪫 What fell flat")
+        for w in report.what_fell_flat or ["—"]:
+            st.markdown(f"- {w}")
+
+    with st.expander("🔎 Raw model output"):
+        st.code(report.raw_model_output or "(none)", language="json")
+
+
+def text_tab(engine: HumorGenomeEngine, audiences: list) -> None:
+    examples = load_examples()
+    ex_labels = ["— pick an example —"] + [e["label"] for e in examples]
+    picked = st.selectbox("Load an example", ex_labels)
+
+    default_text = ""
+    if picked != ex_labels[0]:
+        default_text = next(e["joke"] for e in examples if e["label"] == picked)
+
+    joke = st.text_area(
+        "Your joke",
+        value=default_text,
+        height=120,
+        placeholder="Why did the scarecrow win an award? Because he was outstanding in his field.",
+    )
+
+    if st.button("🔬 Analyze the genome", type="primary") and joke.strip():
+        with st.spinner("Gemma is dissecting the joke…"):
+            st.session_state["report"] = engine.analyze(joke, audiences=audiences)
+
+    report = st.session_state.get("report")
+    if report:
+        render_report(report)
+
+        st.divider()
+        st.markdown("### ✍️ Punch it up")
+        pu_cols = st.columns([2, 1])
+        target = pu_cols[0].selectbox(
+            "Rewrite to land harder with…", audiences, key="punch_target"
+        )
+        if pu_cols[1].button("Rewrite with Gemma"):
+            with st.spinner("Rewriting…"):
+                punch = engine.punch_up(report, target)
+            st.success(punch.rewrite)
+            st.caption(
+                f"**Mechanism changed:** {punch.mechanism_changed}  \n"
+                f"**Why it's better:** {punch.why_better}"
+            )
+
+        with st.expander("🔎 Raw model output"):
+            st.code(report.raw_model_output or "(none)", language="json")
+
+
+def video_tab(engine: HumorGenomeEngine) -> None:
+    st.markdown(
+        "Upload a short comedy clip. We detect where the **audience actually "
+        "laughs** (from the audio), sample frames for a multimodal Gemma, and "
+        "explain **why each beat landed — or why the room stayed quiet.**"
+    )
+    if not ffmpeg_available():
+        st.error("`ffmpeg` is not installed, so video decoding is disabled here.")
+
+    up = st.file_uploader(
+        "Comedy clip", type=["mp4", "mov", "mkv", "webm", "avi", "m4v"]
+    )
+    transcript = st.text_area(
+        "Transcript (optional — plain text, .srt or .vtt content)",
+        height=110,
+        help="Timestamps (SRT/VTT) help align jokes to laughs. Plain text also works.",
+        placeholder="00:00:03,000 --> 00:00:06,000\nSo I tried to assemble the furniture...",
+    )
+
+    if st.button("🎬 Analyze the clip", type="primary") and up is not None:
+        suffix = os.path.splitext(up.name)[1] or ".mp4"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
+            tf.write(up.getbuffer())
+            path = tf.name
+        with st.spinner("Detecting laughs and asking Gemma why they laughed…"):
+            st.session_state["video_report"] = engine.analyze_video(
+                path, transcript=transcript
+            )
+
+    vr = st.session_state.get("video_report")
+    if vr:
+        render_video_report(vr)
+
+
 def main() -> None:
     st.title("🎭 Why'd They Laugh?")
     st.caption(
-        "A Gemma-powered humor understanding engine. Paste a joke and see its "
-        "**humor genome** — the structure, surprise, culture, and audience fit "
+        "A Gemma-powered humor understanding engine. Analyze a **joke** or a "
+        "**comedy clip** and see the structure, culture, and audience reaction "
         "that decide whether people laugh."
     )
 
@@ -143,49 +312,11 @@ def main() -> None:
                 audiences.append(a)
         audiences = audiences or ["General public"]
 
-    examples = load_examples()
-    ex_labels = ["— pick an example —"] + [e["label"] for e in examples]
-    picked = st.selectbox("Load an example", ex_labels)
-
-    default_text = ""
-    if picked != ex_labels[0]:
-        default_text = next(e["joke"] for e in examples if e["label"] == picked)
-
-    joke = st.text_area(
-        "Your joke",
-        value=default_text,
-        height=120,
-        placeholder="Why did the scarecrow win an award? Because he was outstanding in his field.",
-    )
-
-    analyze = st.button("🔬 Analyze the genome", type="primary")
-
-    if analyze and joke.strip():
-        with st.spinner("Gemma is dissecting the joke…"):
-            report = engine.analyze(joke, audiences=audiences)
-        st.session_state["report"] = report
-
-    report = st.session_state.get("report")
-    if report:
-        render_report(report)
-
-        st.divider()
-        st.markdown("### ✍️ Punch it up")
-        pu_cols = st.columns([2, 1])
-        target = pu_cols[0].selectbox(
-            "Rewrite to land harder with…", audiences, key="punch_target"
-        )
-        if pu_cols[1].button("Rewrite with Gemma"):
-            with st.spinner("Rewriting…"):
-                punch = engine.punch_up(report, target)
-            st.success(punch.rewrite)
-            st.caption(
-                f"**Mechanism changed:** {punch.mechanism_changed}  \n"
-                f"**Why it's better:** {punch.why_better}"
-            )
-
-        with st.expander("🔎 Raw model output"):
-            st.code(report.raw_model_output or "(none)", language="json")
+    tab_text, tab_video = st.tabs(["🗣️ Text joke", "🎬 Video clip"])
+    with tab_text:
+        text_tab(engine, audiences)
+    with tab_video:
+        video_tab(engine)
 
 
 if __name__ == "__main__":
