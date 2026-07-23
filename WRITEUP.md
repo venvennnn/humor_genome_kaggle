@@ -9,7 +9,10 @@
 ## What we built
 
 *Why'd They Laugh?* is a humor **understanding** engine. Instead of generating
-jokes, it explains **why a joke works — or why it bombs — and for whom.**
+jokes, it explains **why a joke works — or why it bombs — and for whom.** It does
+this for both **text jokes** and **comedy video clips**.
+
+### Text: the humor genome
 
 You paste any joke, and Gemma returns a structured decomposition we call its
 **humor genome**:
@@ -26,9 +29,25 @@ You paste any joke, and Gemma returns a structured decomposition we call its
 - A one-click **punch-up** that rewrites the joke to land harder with a chosen
   audience, and reports which mechanism it changed and why.
 
-It ships as a Streamlit app, a CLI, and a small Python library, with a curated
-example set (including deliberately unfunny jokes to show the engine scoring
-things *low* and explaining why).
+### Video: why did the room laugh?
+
+Upload a short comedy clip and the engine answers **"why did they laugh — or why
+didn't they?"**, grounded in the *actual audience reaction*:
+
+1. **Reaction detection.** We extract the audio and detect where the crowd
+   laughs/applauds — sustained, broadband energy bursts above the speech
+   baseline — producing a reaction timeline (numpy, no model needed).
+2. **Frames → multimodal Gemma.** Evenly sampled frames are sent to a multimodal
+   Gemma (**Gemma 3 / 3n**) for physical and visual comedy.
+3. **Beat-by-beat reasoning.** Gemma splits the clip into comedic beats and,
+   cross-referencing the *measured* laughs, explains **why each beat landed or
+   fell flat** — timing, unclear setup, wrong audience, or a cultural reference
+   that didn't connect. An optional transcript (plain/`.srt`/`.vtt`) sharpens the
+   alignment of jokes to laughs.
+
+It ships as a Streamlit app (text + video tabs), a CLI, and a small Python
+library, with a curated example set (including deliberately unfunny jokes to show
+the engine scoring things *low* and explaining why).
 
 ## Why humor *understanding*
 
@@ -62,21 +81,41 @@ engine doing the real work.
    rewrite plus an explanation of the mechanism it changed. This closes the loop
    from *understanding* to *actionable improvement*.
 
+For video, Gemma acts as a multimodal reasoner: it receives sampled frames plus
+the measured laugh timeline and produces the beat-by-beat verdicts. Crucially, we
+feed the model the *detected* reactions so its "landed / fell flat" judgments are
+grounded in real audience data rather than a guess about what's funny.
+
+**Why Gemma 3 / 3n (not Gemma 2).** Gemma 2 is text-only, so it can't see a
+comedy clip. We use the **Gemma 3 family**: **Gemma 3** (4B/12B/27B) for text
+analysis and frame understanding, and **Gemma 3n** — natively multimodal over
+text, image, audio, and video — for the video feature. Model names are fully
+configurable via environment variables, so upgrading to **Gemma 4** or a larger
+size is a one-line change with no code edits.
+
 We designed for portability so judges can actually run it. A unified client
-auto-selects a backend: **Ollama** (`gemma2`), **HuggingFace transformers**
-(`google/gemma-2-2b-it`), or a deterministic **offline mock** that requires no
-weights and is clearly labeled in the UI. This means the full experience is
-clickable in seconds, then upgrades to real Gemma with one command.
+auto-selects a backend: **Ollama** (`gemma3` / `gemma3n`), **HuggingFace
+transformers** (`google/gemma-3-4b-it` / `gemma-3n-e4b`), or a deterministic
+**offline mock** that requires no weights and is clearly labeled in the UI. The
+video reaction-detection stage runs on *any* backend because it's pure audio
+analysis; only the frame reasoning needs a multimodal Gemma. This means the full
+experience is clickable in seconds, then upgrades to real Gemma with one command.
 
 ## Technical approach & architecture
 
 ```
 Streamlit UI  ─┐
 CLI           ─┼─►  HumorGenomeEngine  ─►  GemmaClient ─► Ollama | HF | mock
-Library API   ─┘         │
-                         ├─ prompts.py   (JSON-schema prompts)
-                         ├─ genome.py    (typed schema: report, axes, audiences)
+Library API   ─┘         │                    (text + image input)
+                         ├─ prompts.py   (JSON-schema prompts: text / punch-up / video)
+                         ├─ genome.py    (typed schema: report, axes, audiences, video beats)
+                         ├─ video.py     (ffmpeg: frames + audio, SRT/VTT parsing)
+                         ├─ laughter.py  (numpy: audience-reaction detection)
                          └─ robust JSON extraction + validation/clamping
+
+Video path:  clip ─► ffmpeg ─► [audio → laughter.py → reaction timeline]
+                              └► [frames] ─┐
+                    transcript ────────────┴─► Gemma (multimodal) ─► beat verdicts
 ```
 
 - **Schema-first design** (`genome.py`): the UI, CLI, and tests all depend on
@@ -113,6 +152,10 @@ Library API   ─┘         │
   reasoning about cultural assumptions is often more insightful than its scores.
 - Structured decomposition turns an LLM's fuzzy comedic sense into something a
   human can collaborate with — the real goal of the hackathon.
+- **For video, the laugh is the label.** Real audience laughter is one of the few
+  places humor *does* have ground truth. Detecting it from audio and feeding it to
+  Gemma lets the model explain observed reactions instead of predicting funniness
+  in a vacuum — a much more grounded, useful form of humor understanding.
 
 ## Links
 
@@ -123,8 +166,8 @@ Library API   ─┘         │
 ## Try it in 30 seconds
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt                    # + ffmpeg for the video tab
 HUMOR_GENOME_BACKEND=mock streamlit run app.py     # zero-setup demo
 # or, for real Gemma:
-ollama run gemma2 && streamlit run app.py
+ollama run gemma3 && ollama pull gemma3n && streamlit run app.py
 ```

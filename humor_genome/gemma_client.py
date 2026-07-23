@@ -31,9 +31,25 @@ class BackendUnavailable(RuntimeError):
 
 
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-# Gemma family model tags. Gemma 2 / 3 instruct variants work well here.
-DEFAULT_OLLAMA_MODEL = os.environ.get("HUMOR_GENOME_OLLAMA_MODEL", "gemma2")
-DEFAULT_HF_MODEL = os.environ.get("HUMOR_GENOME_HF_MODEL", "google/gemma-2-2b-it")
+
+# Gemma family model tags.
+#
+# Text analysis uses Gemma 3 (the current multimodal generation; the text path
+# works identically to Gemma 2's chat format). Set these to `gemma4` / a Gemma 4
+# HF id once you have access — nothing else needs to change.
+#
+# The VIDEO feature needs a model that can ingest images (and ideally audio),
+# so it defaults to Gemma 3n, which is natively multimodal (text+image+audio+
+# video) and available on Ollama as `gemma3n`. Gemma 3 (4B/12B/27B) also accepts
+# images and is a fine substitute for the frame-based path.
+DEFAULT_OLLAMA_MODEL = os.environ.get("HUMOR_GENOME_OLLAMA_MODEL", "gemma3")
+DEFAULT_HF_MODEL = os.environ.get("HUMOR_GENOME_HF_MODEL", "google/gemma-3-4b-it")
+DEFAULT_OLLAMA_VISION_MODEL = os.environ.get(
+    "HUMOR_GENOME_OLLAMA_VISION_MODEL", "gemma3n"
+)
+DEFAULT_HF_VISION_MODEL = os.environ.get(
+    "HUMOR_GENOME_HF_VISION_MODEL", "google/gemma-3n-e4b"
+)
 
 
 @dataclass
@@ -44,9 +60,11 @@ class GemmaConfig:
     ollama_url: str = DEFAULT_OLLAMA_URL
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     hf_model: str = DEFAULT_HF_MODEL
+    ollama_vision_model: str = DEFAULT_OLLAMA_VISION_MODEL
+    hf_vision_model: str = DEFAULT_HF_VISION_MODEL
     temperature: float = 0.8
     max_tokens: int = 1024
-    request_timeout: int = 120
+    request_timeout: int = 180
 
 
 class GemmaClient:
@@ -119,17 +137,49 @@ class GemmaClient:
             return False
 
     # ------------------------------------------------------------- generation
-    def generate(self, prompt: str, system: Optional[str] = None) -> str:
-        """Return a completion for ``prompt``. Never raises for mock backend."""
+    def generate(
+        self,
+        prompt: str,
+        system: Optional[str] = None,
+        images: Optional[list] = None,
+    ) -> str:
+        """Return a completion for ``prompt``.
+
+        ``images`` is an optional list of image file paths (JPEG/PNG). They are
+        only used by multimodal Gemma backends (Gemma 3 / 3n); the mock ignores
+        the pixels but still routes on the prompt. Never raises for mock.
+        """
         if self.active_backend == "ollama":
-            return self._generate_ollama(prompt, system)
+            return self._generate_ollama(prompt, system, images)
         if self.active_backend == "hf":
-            return self._generate_hf(prompt, system)
+            return self._generate_hf(prompt, system, images)
         return self._generate_mock(prompt, system)
 
-    def _generate_ollama(self, prompt: str, system: Optional[str]) -> str:
+    @property
+    def supports_images(self) -> bool:
+        """Whether the active backend can actually see image input."""
+        return self.active_backend in ("ollama", "hf")
+
+    @staticmethod
+    def _encode_images(images: Optional[list]) -> list:
+        import base64
+
+        encoded = []
+        for img in images or []:
+            try:
+                with open(img, "rb") as f:
+                    encoded.append(base64.b64encode(f.read()).decode("utf-8"))
+            except OSError:
+                continue
+        return encoded
+
+    def _generate_ollama(
+        self, prompt: str, system: Optional[str], images: Optional[list] = None
+    ) -> str:
+        encoded = self._encode_images(images)
+        model = self.config.ollama_vision_model if encoded else self.config.ollama_model
         payload = {
-            "model": self.config.ollama_model,
+            "model": model,
             "prompt": prompt,
             "stream": False,
             "options": {
@@ -139,6 +189,8 @@ class GemmaClient:
         }
         if system:
             payload["system"] = system
+        if encoded:
+            payload["images"] = encoded
         resp = requests.post(
             f"{self.config.ollama_url}/api/generate",
             json=payload,
@@ -147,11 +199,17 @@ class GemmaClient:
         resp.raise_for_status()
         return resp.json().get("response", "")
 
-    def _generate_hf(self, prompt: str, system: Optional[str]) -> str:
+    def _generate_hf(
+        self, prompt: str, system: Optional[str], images: Optional[list] = None
+    ) -> str:
+        content = []
+        for img in images or []:
+            content.append({"type": "image", "url": img})
+        content.append({"type": "text", "text": prompt})
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": content if images else prompt})
         out = self._hf_pipe(
             messages,
             max_new_tokens=self.config.max_tokens,
@@ -179,7 +237,13 @@ class GemmaClient:
     # --------------------------------------------------------------- describe
     def describe(self) -> str:
         if self.active_backend == "ollama":
-            return f"Ollama · model={self.config.ollama_model}"
+            return (
+                f"Ollama · text={self.config.ollama_model} · "
+                f"vision={self.config.ollama_vision_model}"
+            )
         if self.active_backend == "hf":
-            return f"HuggingFace · model={self.config.hf_model}"
+            return (
+                f"HuggingFace · text={self.config.hf_model} · "
+                f"vision={self.config.hf_vision_model}"
+            )
         return "Offline mock (no Gemma weights loaded)"
