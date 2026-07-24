@@ -38,17 +38,20 @@ DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 # works identically to Gemma 2's chat format). Set these to `gemma4` / a Gemma 4
 # HF id once you have access — nothing else needs to change.
 #
-# The VIDEO feature needs a model that can ingest images (and ideally audio),
-# so it defaults to Gemma 3n, which is natively multimodal (text+image+audio+
-# video) and available on Ollama as `gemma3n`. Gemma 3 (4B/12B/27B) also accepts
-# images and is a fine substitute for the frame-based path.
+# The VIDEO feature sends sampled image frames to the model, so the vision model
+# must accept image input. We default to Gemma 3 (4B/12B/27B), whose image
+# support is robust in Ollama and HuggingFace and which doubles as the text
+# model (so a single `ollama pull gemma3` covers both paths). Gemma 3n is also
+# multimodal (and adds audio/video) — set the vision vars to `gemma3n` /
+# `google/gemma-3n-e4b` to use it, but note some Ollama builds don't expose
+# gemma3n image input yet, which returns HTTP 400 (we fall back to text-only).
 DEFAULT_OLLAMA_MODEL = os.environ.get("HUMOR_GENOME_OLLAMA_MODEL", "gemma3")
 DEFAULT_HF_MODEL = os.environ.get("HUMOR_GENOME_HF_MODEL", "google/gemma-3-4b-it")
 DEFAULT_OLLAMA_VISION_MODEL = os.environ.get(
-    "HUMOR_GENOME_OLLAMA_VISION_MODEL", "gemma3n"
+    "HUMOR_GENOME_OLLAMA_VISION_MODEL", "gemma3"
 )
 DEFAULT_HF_VISION_MODEL = os.environ.get(
-    "HUMOR_GENOME_HF_VISION_MODEL", "google/gemma-3n-e4b"
+    "HUMOR_GENOME_HF_VISION_MODEL", "google/gemma-3-4b-it"
 )
 
 
@@ -196,7 +199,26 @@ class GemmaClient:
             json=payload,
             timeout=self.config.request_timeout,
         )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # Surface Ollama's actual error (e.g. model not found, or a model
+            # that can't accept image input) instead of a bare status code.
+            detail = ""
+            try:
+                detail = resp.json().get("error", "")
+            except ValueError:
+                detail = resp.text[:500]
+            hint = ""
+            if encoded:
+                hint = (
+                    f" — model '{model}' may not accept image input, or isn't "
+                    f"pulled. Try `ollama pull {model}`, or set "
+                    f"HUMOR_GENOME_OLLAMA_VISION_MODEL to an image-capable Gemma."
+                )
+            raise requests.HTTPError(
+                f"Ollama {resp.status_code} on /api/generate for model "
+                f"'{model}': {detail}{hint}",
+                response=resp,
+            )
         return resp.json().get("response", "")
 
     def _generate_hf(

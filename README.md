@@ -82,12 +82,14 @@ values, so the UI stays stable even when a model wraps its output in prose.
 
 | Gemma | Modality | Used for | Ollama tag |
 | ----- | -------- | -------- | ---------- |
-| **Gemma 3** (4B/12B/27B) | text **+ image**, 128K ctx | default text analysis + frames | `gemma3` |
-| **Gemma 3n** (E2B/E4B) | text **+ image + audio + video** | the video feature (multimodal) | `gemma3n` |
+| **Gemma 3** (4B/12B/27B) | text **+ image**, 128K ctx | text analysis **and** video frames (default) | `gemma3` |
+| **Gemma 3n** (E2B/E4B) | text **+ image + audio + video** | optional multimodal upgrade for video | `gemma3n` |
 
 We deliberately moved **off Gemma 2** (which is text-only) to the **Gemma 3
-family**: Gemma 3 for the text-analysis path and **Gemma 3n** for video, since it
-is natively multimodal and can reason over frames (and audio). Everything is
+family**. **Gemma 3** is the default for both the text path and the video frame
+vision — one `ollama pull gemma3` covers everything. **Gemma 3n** (which also
+handles audio/video) is an optional upgrade; if a given Ollama build rejects its
+image input, the app falls back to text-only automatically. Everything is
 configurable via env vars, so pointing at **Gemma 4** or a larger size is a
 one-line change (see below) — no code edits required.
 
@@ -98,8 +100,8 @@ The unified client (`humor_genome/gemma_client.py`) auto-selects a backend so
 
 | Backend | How | Needs |
 | ------- | --- | ----- |
-| `ollama` | `ollama run gemma3` (+ `ollama pull gemma3n` for video) | Ollama + a Gemma model |
-| `hf` | `pip install -r requirements-model.txt` | GPU + `google/gemma-3-4b-it` / `gemma-3n-e4b` access |
+| `ollama` | `ollama pull gemma3` (covers text + video) | Ollama + a Gemma model |
+| `hf` | `pip install -r requirements-model.txt` | GPU + `google/gemma-3-4b-it` access |
 | `mock` | nothing — always works | ✅ zero setup |
 
 Selection order for `auto`: **Ollama → HuggingFace → offline mock**. The mock is
@@ -117,9 +119,8 @@ the frame-based reasoning needs a multimodal Gemma.
 pip install -r requirements.txt
 # for the video feature also install ffmpeg (apt-get install ffmpeg / brew install ffmpeg)
 
-# Recommended: real Gemma via Ollama
-ollama run gemma3          # text analysis, in another terminal
-ollama pull gemma3n        # (optional) multimodal model for the video feature
+# Recommended: real Gemma via Ollama (gemma3 covers BOTH text and video frames)
+ollama pull gemma3         # one model for text analysis + video frame vision
 
 streamlit run app.py       # open http://localhost:8501
 ```
@@ -152,10 +153,16 @@ Environment variables:
 
 - `HUMOR_GENOME_BACKEND` — `auto` (default) | `ollama` | `hf` | `mock`
 - `HUMOR_GENOME_OLLAMA_MODEL` — default `gemma3` (text)
-- `HUMOR_GENOME_OLLAMA_VISION_MODEL` — default `gemma3n` (video/images)
+- `HUMOR_GENOME_OLLAMA_VISION_MODEL` — default `gemma3` (video/images)
 - `HUMOR_GENOME_HF_MODEL` — default `google/gemma-3-4b-it`
-- `HUMOR_GENOME_HF_VISION_MODEL` — default `google/gemma-3n-e4b`
+- `HUMOR_GENOME_HF_VISION_MODEL` — default `google/gemma-3-4b-it`
 - `OLLAMA_HOST` — default `http://localhost:11434`
+
+> The vision model defaults to **Gemma 3** because its image support is reliable
+> in Ollama and it doubles as the text model (one `ollama pull gemma3` covers
+> both). To use **Gemma 3n** (adds audio/video) set
+> `HUMOR_GENOME_OLLAMA_VISION_MODEL=gemma3n`; if your Ollama build rejects image
+> input for it (HTTP 400), the app automatically falls back to text-only.
 
 To use **Gemma 4** once you have access, e.g.:
 

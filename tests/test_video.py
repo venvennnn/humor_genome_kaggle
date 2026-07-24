@@ -114,3 +114,43 @@ def test_analyze_video_end_to_end():
     # mock backend is not multimodal, so no frames should be sent
     assert report.multimodal_used is False
     assert report.to_dict()["source"].endswith(".mp4")
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not installed")
+def test_analyze_video_falls_back_when_vision_fails():
+    """If the vision (image) call fails, analysis should degrade to text-only."""
+    import json as _json
+    from humor_genome.gemma_client import GemmaClient
+    from humor_genome.mock_brain import mock_response
+
+    class VisionFailsClient(GemmaClient):
+        def __init__(self):
+            self.config = GemmaConfig(backend="mock")
+            self.active_backend = "ollama"  # pretend we're on a real backend
+
+        @property
+        def supports_images(self):
+            return True
+
+        def generate(self, prompt, system=None, images=None):
+            if images:
+                raise RuntimeError("400: model does not support images")
+            return mock_response(prompt)
+
+    tmp = tempfile.mkdtemp()
+    wav = os.path.join(tmp, "a.wav")
+    _synth_wav(wav, dur=8, bursts=((3.0, 4.0),))
+    mp4 = os.path.join(tmp, "clip.mp4")
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i",
+         "testsrc=duration=8:size=320x240:rate=10", "-i", wav,
+         "-shortest", "-pix_fmt", "yuv420p", mp4],
+        capture_output=True, check=True,
+    )
+    engine = HumorGenomeEngine(client=VisionFailsClient())
+    report = engine.analyze_video(mp4, transcript="A joke. The punchline.")
+    # it should NOT raise; instead fall back to text-only
+    assert report.multimodal_used is False
+    assert report.frames_analyzed == 0
+    assert any("vision" in n.lower() for n in report.notes)
+    assert len(report.beats) >= 1

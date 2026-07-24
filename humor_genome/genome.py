@@ -197,6 +197,7 @@ class VideoHumorReport:
     overall_summary: str = ""
     what_worked: List[str] = field(default_factory=list)
     what_fell_flat: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)  # warnings/diagnostics for the UI
     raw_model_output: str = ""
 
     def to_dict(self) -> Dict[str, Any]:

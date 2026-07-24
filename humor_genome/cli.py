@@ -92,6 +92,9 @@ def _print_video_report(backend: str, report) -> None:
           f"frames→Gemma: {report.frames_analyzed}")
     print(f"\n> {report.overall_summary}\n")
 
+    for note in report.notes:
+        print(f"[note] {note}\n")
+
     if report.reactions:
         print("Measured audience reactions:")
         for r in report.reactions:
