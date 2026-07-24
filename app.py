@@ -40,6 +40,16 @@ def get_engine(backend: str) -> HumorGenomeEngine:
     return HumorGenomeEngine(config=config)
 
 
+def _backend_error_message(engine: HumorGenomeEngine, exc: Exception) -> str:
+    return (
+        f"The **{engine.describe_backend()}** backend returned an error:\n\n"
+        f"```\n{exc}\n```\n"
+        "Fixes: make sure the model is pulled (e.g. `ollama pull gemma3`), or "
+        "switch the **Gemma backend** in the sidebar to **mock** to try the app "
+        "with zero setup."
+    )
+
+
 def radar_chart(report: GenomeReport) -> go.Figure:
     axes = [d.name for d in report.dimensions] or GENOME_AXES
     values = [report.dimension(a) for a in axes]
@@ -198,6 +208,9 @@ def render_video_report(report: VideoHumorReport) -> None:
     m[2].metric("Laugh coverage", f"{report.laugh_coverage * 100:.0f}%")
     m[3].metric("Biggest laugh @", f"{report.biggest_laugh_s:.1f}s")
 
+    for note in report.notes:
+        st.warning(note)
+
     if report.overall_summary:
         st.markdown(f"#### 🎬 {report.overall_summary}")
 
@@ -259,7 +272,11 @@ def text_tab(engine: HumorGenomeEngine, audiences: list) -> None:
 
     if st.button("🔬 Analyze the genome", type="primary") and joke.strip():
         with st.spinner("Gemma is dissecting the joke…"):
-            st.session_state["report"] = engine.analyze(joke, audiences=audiences)
+            try:
+                st.session_state["report"] = engine.analyze(joke, audiences=audiences)
+            except Exception as exc:
+                st.error(_backend_error_message(engine, exc))
+                st.session_state.pop("report", None)
 
     report = st.session_state.get("report")
     if report:
@@ -273,12 +290,15 @@ def text_tab(engine: HumorGenomeEngine, audiences: list) -> None:
         )
         if pu_cols[1].button("Rewrite with Gemma"):
             with st.spinner("Rewriting…"):
-                punch = engine.punch_up(report, target)
-            st.success(punch.rewrite)
-            st.caption(
-                f"**Mechanism changed:** {punch.mechanism_changed}  \n"
-                f"**Why it's better:** {punch.why_better}"
-            )
+                try:
+                    punch = engine.punch_up(report, target)
+                    st.success(punch.rewrite)
+                    st.caption(
+                        f"**Mechanism changed:** {punch.mechanism_changed}  \n"
+                        f"**Why it's better:** {punch.why_better}"
+                    )
+                except Exception as exc:
+                    st.error(_backend_error_message(engine, exc))
 
         with st.expander("🔎 Raw model output"):
             st.code(report.raw_model_output or "(none)", language="json")
@@ -309,9 +329,13 @@ def video_tab(engine: HumorGenomeEngine) -> None:
             tf.write(up.getbuffer())
             path = tf.name
         with st.spinner("Detecting laughs and asking Gemma why they laughed…"):
-            st.session_state["video_report"] = engine.analyze_video(
-                path, transcript=transcript
-            )
+            try:
+                st.session_state["video_report"] = engine.analyze_video(
+                    path, transcript=transcript
+                )
+            except Exception as exc:
+                st.error(_backend_error_message(engine, exc))
+                st.session_state.pop("video_report", None)
 
     vr = st.session_state.get("video_report")
     if vr:

@@ -282,7 +282,9 @@ class HumorGenomeEngine:
 
         report.reactions = reactions
         report.frames_analyzed = len(frame_paths)
-        report.multimodal_used = bool(frame_paths)
+        # multimodal_used is set accurately after the model call (a vision call
+        # can still fail even when frames were extracted).
+        report.multimodal_used = False
         report.transcript = plain
         report.has_transcript = bool(plain)
         report.laugh_coverage = laughter_mod.laugh_coverage(reactions, report.duration_s)
@@ -296,16 +298,38 @@ class HumorGenomeEngine:
             or "- (no audience reactions detected in the audio)"
         )
 
-        prompt = video_prompt(
-            transcript=plain,
-            reactions_desc=reactions_desc,
-            duration_s=report.duration_s,
-            n_frames=len(frame_paths),
-            has_frames=bool(frame_paths),
-        )
-        raw = self.client.generate(
-            prompt, system=SYSTEM_PROMPT, images=frame_paths or None
-        )
+        def _build_prompt(with_frames: bool) -> str:
+            return video_prompt(
+                transcript=plain,
+                reactions_desc=reactions_desc,
+                duration_s=report.duration_s,
+                n_frames=len(frame_paths) if with_frames else 0,
+                has_frames=with_frames,
+            )
+
+        raw = ""
+        if frame_paths:
+            try:
+                raw = self.client.generate(
+                    _build_prompt(True), system=SYSTEM_PROMPT, images=frame_paths
+                )
+                report.multimodal_used = True
+            except Exception as exc:  # vision model missing / rejects images
+                report.multimodal_used = False
+                report.notes.append(
+                    "Frame (vision) analysis failed, so this used transcript + "
+                    f"reactions only. Reason: {exc}"
+                )
+                raw = ""
+
+        if not raw:
+            # text-only path (no frames, or the vision call failed above)
+            report.multimodal_used = False
+            raw = self.client.generate(_build_prompt(False), system=SYSTEM_PROMPT)
+
+        if not report.multimodal_used:
+            report.frames_analyzed = 0
+
         report.raw_model_output = raw
 
         try:
