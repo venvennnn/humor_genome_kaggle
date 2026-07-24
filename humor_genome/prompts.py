@@ -43,6 +43,9 @@ Decompose the joke's "humor genome". Return JSON with EXACTLY these keys:
   "violation": "how the payoff breaks that expectation",
   "payoff_mechanism": "the specific 'aha' that triggers the laugh",
   "mechanisms": ["subset of: {_mechanisms_list()}"],
+  "punchlines": [
+    {{"text": "the exact laugh-line from the joke", "kind": "punchline|tag/topper|callback|act-out", "mechanism": "<one of: {_mechanisms_list()}>", "strength": <0-10 how hard this specific line hits>}}
+  ],
   "dimensions": [
     {{"name": "<one of: {_axes_list()}>", "score": <0-10 number>, "note": "<short reason>"}}
   ],
@@ -52,6 +55,9 @@ Decompose the joke's "humor genome". Return JSON with EXACTLY these keys:
   "audiences": [
     {{"audience": "<one of: {audiences_str}>", "verdict": "kills|lands|polite chuckle|bombs", "score": <0-10>, "reasoning": "<why>"}}
   ],
+  "improvements": [
+    {{"issue": "what specifically holds this joke back", "suggestion": "a concrete, actionable fix a comedy writer could apply", "example": "optional short rewritten fragment showing the fix"}}
+  ],
   "one_line_explanation": "a single crisp sentence explaining why it is (or isn't) funny",
   "funniness": <overall 0-10 number>
 }}
@@ -59,6 +65,8 @@ Decompose the joke's "humor genome". Return JSON with EXACTLY these keys:
 Rules:
 - Include one dimensions entry for EACH of: {_axes_list()}.
 - Include one audiences entry for EACH of: {audiences_str}.
+- DETECT ALL PUNCHLINES: list every distinct laugh line — the main punchline AND any tags/toppers, callbacks, or act-outs. Quote the exact text of each. If the joke genuinely has only one, return one.
+- ALWAYS give at least 2 improvement suggestions. Make them specific to THIS joke (name the weak setup word, the flabby phrasing, the missing act-out) — never generic advice. For strong jokes, suggest sharper tags or alternate angles.
 - Be candid: if the joke is weak, say so and score it low.
 - Return ONLY the JSON object, nothing else."""
 

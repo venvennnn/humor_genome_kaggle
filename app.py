@@ -90,6 +90,27 @@ def render_report(report: GenomeReport) -> None:
 
     st.divider()
 
+    st.markdown(f"##### 🎯 Punchlines detected ({len(report.punchlines)})")
+    if report.punchlines:
+        for p in report.punchlines:
+            kind_color = "#7c3aed" if p.kind == "punchline" else "#0891b2"
+            pcols = st.columns([6, 2])
+            pcols[0].markdown(
+                f"<span style='background:{kind_color};color:white;padding:1px 8px;"
+                f"border-radius:6px;font-size:0.75em'>{p.kind}</span> "
+                f"&nbsp;“{p.text}”",
+                unsafe_allow_html=True,
+            )
+            pcols[1].markdown(
+                f"<div style='text-align:right'>{p.mechanism or '—'} · "
+                f"<b>{p.strength}/10</b></div>",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption("No distinct punchline detected — that itself may be the problem.")
+
+    st.divider()
+
     cols = st.columns(2)
     with cols[0]:
         st.markdown("##### 🌍 Cultural assumptions")
@@ -113,6 +134,23 @@ def render_report(report: GenomeReport) -> None:
             unsafe_allow_html=True,
         )
         bar_cols[2].progress(min(1.0, a.score / 10), text=a.reasoning)
+
+    if report.improvements:
+        st.divider()
+        if report.needs_work:
+            st.markdown("##### 🛠️ How to make it funnier")
+            st.caption(
+                f"This one scored {report.funniness}/10 — here are targeted fixes."
+            )
+        else:
+            st.markdown("##### ✨ Suggestions to sharpen it further")
+        for s in report.improvements:
+            with st.container(border=True):
+                if s.issue:
+                    st.markdown(f"**Issue:** {s.issue}")
+                st.markdown(f"**Fix:** {s.suggestion}")
+                if s.example:
+                    st.markdown(f"_e.g._ {s.example}")
 
 
 def reaction_timeline_chart(report: VideoHumorReport) -> go.Figure:

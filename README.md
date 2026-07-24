@@ -22,12 +22,17 @@ Given any joke, Gemma decomposes it into a structured report:
 
 - **Setup → Expectation → Violation → Payoff** — the anatomy of the laugh.
 - **Comedic mechanisms** — misdirection, wordplay, callback, taboo, absurdism…
+- **Punchline detection** — finds *every* laugh line (main punchline **plus**
+  tags/toppers, callbacks, act-outs), each with its mechanism and strength.
 - **The humor genome** — six scored axes (`surprise`, `specificity`,
   `cleverness`, `relatability`, `edge`, `warmth`) rendered as a radar chart.
 - **Cultural assumptions** the listener must share to "get it."
 - **Timing notes** and **failure modes** (who it confuses, when it bombs).
 - **Audience fit** — predicted verdict (*kills / lands / polite chuckle /
   bombs*) per audience segment, with reasoning.
+- **Improvement suggestions** — for weaker jokes, concrete, actionable fixes
+  targeted at the joke's weakest axes (with example rewrites); for strong jokes,
+  tips to sharpen it further.
 - **Punch-up** — Gemma rewrites the joke to land harder with a chosen audience,
   and tells you *which mechanism it changed and why*.
 

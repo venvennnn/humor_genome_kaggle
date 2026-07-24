@@ -69,6 +69,35 @@ class AudienceFit:
 
 
 @dataclass
+class Punchline:
+    """A single laugh trigger detected in a joke.
+
+    A joke can have more than one: a main punchline plus tags/toppers,
+    act-outs, or callbacks that each earn their own laugh.
+    """
+
+    text: str
+    kind: str = "punchline"   # punchline | tag/topper | callback | act-out
+    mechanism: str = ""       # the comedic mechanism it uses
+    strength: float = 0.0     # 0-10 how hard this specific line hits
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class ImprovementSuggestion:
+    """One concrete, actionable way to make the joke funnier."""
+
+    issue: str        # what's holding the joke back
+    suggestion: str   # how to fix it
+    example: str = ""  # optional rewritten fragment demonstrating the fix
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class GenomeReport:
     """The full decomposition of a single joke."""
 
@@ -78,13 +107,16 @@ class GenomeReport:
     violation: str = ""         # how the payoff breaks that expectation
     payoff_mechanism: str = ""  # the "aha" that triggers the laugh
     mechanisms: List[str] = field(default_factory=list)
+    punchlines: List[Punchline] = field(default_factory=list)
     dimensions: List[GenomeDimension] = field(default_factory=list)
     cultural_assumptions: List[str] = field(default_factory=list)
     timing_notes: str = ""
     failure_modes: List[str] = field(default_factory=list)
     audiences: List[AudienceFit] = field(default_factory=list)
+    improvements: List[ImprovementSuggestion] = field(default_factory=list)
     one_line_explanation: str = ""
     funniness: float = 0.0      # overall 0-10 estimate
+    needs_work: bool = False    # true when the joke is weak enough to flag fixes
     raw_model_output: str = ""  # kept for transparency / debugging
 
     def dimension(self, name: str) -> float:

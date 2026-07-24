@@ -78,6 +78,44 @@ def test_report_roundtrips_to_dict():
     assert json.dumps(d)  # serializable
     assert d["joke"] == "roundtrip joke"
     assert len(d["dimensions"]) == len(GENOME_AXES)
+    assert "punchlines" in d and "improvements" in d
+
+
+def test_punchlines_detected():
+    report = _engine().analyze(
+        "Why did the scarecrow win an award? Because he was outstanding in his field."
+    )
+    assert len(report.punchlines) >= 1
+    for p in report.punchlines:
+        assert p.text.strip() != ""
+        assert 0 <= p.strength <= 10
+
+
+def test_tag_topper_detected():
+    report = _engine().analyze(
+        "I bought a treadmill to get fit. Now it's a coat rack — the most expensive one I own."
+    )
+    kinds = [p.kind for p in report.punchlines]
+    assert "punchline" in kinds
+    # the em-dash trailing clause should be picked up as a second laugh line
+    assert len(report.punchlines) >= 2
+
+
+def test_weak_joke_gets_improvements_and_flag():
+    report = _engine().analyze("I like pizza. Pizza is good. Do you like pizza too?")
+    assert report.needs_work is True
+    assert len(report.improvements) >= 2
+    for s in report.improvements:
+        assert s.suggestion.strip() != ""
+
+
+def test_improvements_target_weakest_axes():
+    report = _engine().analyze("a fairly generic joke about mondays being bad")
+    weakest = sorted(report.dimensions, key=lambda d: d.score)[:2]
+    weak_names = {d.name for d in weakest}
+    # each suggestion issue references one of the two weakest axes
+    mentioned = " ".join(s.issue for s in report.improvements)
+    assert any(name in mentioned for name in weak_names)
 
 
 def test_scores_clamped_from_bad_model_output():

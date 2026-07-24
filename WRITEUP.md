@@ -20,6 +20,12 @@ You paste any joke, and Gemma returns a structured decomposition we call its
 - The anatomy of the laugh: **Setup → Expectation → Violation → Payoff**.
 - The **comedic mechanisms** at play (misdirection, wordplay, callback, taboo,
   absurdism, self-deprecation, rule-of-three, …).
+- **Every punchline**, not just the main one: the payoff line plus any
+  tags/toppers, callbacks, or act-outs, each labeled with its mechanism and a
+  strength score.
+- **Actionable improvement suggestions**: when a joke is weak, targeted fixes
+  aimed at its lowest genome axes (with example rewrites); for strong jokes,
+  ways to sharpen it further.
 - Six scored **genome axes** — surprise, specificity, cleverness, relatability,
   edge, warmth — visualized as a radar "fingerprint."
 - The **cultural assumptions** a listener must share to get it.

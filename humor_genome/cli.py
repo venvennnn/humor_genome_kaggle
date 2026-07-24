@@ -37,6 +37,12 @@ def _print_report(report: GenomeReport) -> None:
     print(f"Payoff:      {report.payoff_mechanism}")
     print(f"Mechanisms:  {', '.join(report.mechanisms)}")
 
+    if report.punchlines:
+        print("\nPunchlines detected:")
+        for i, p in enumerate(report.punchlines, 1):
+            print(f"  {i}. [{p.kind}] {p.strength:>4}/10 ({p.mechanism})")
+            print(f"     \"{p.text}\"")
+
     print("\nHumor genome:")
     for d in report.dimensions:
         print(f"  {d.name:<12} {d.score:>4}/10  {_bar(d.score)}  {d.note}")
@@ -57,6 +63,22 @@ def _print_report(report: GenomeReport) -> None:
     print("\nAudience fit:")
     for a in report.audiences:
         print(f"  {a.audience:<20} {a.verdict:<16} {a.score:>4}/10  {a.reasoning}")
+
+    if report.improvements:
+        header = (
+            "\nHow to make it funnier:"
+            if report.needs_work
+            else "\nSuggestions to sharpen it further:"
+        )
+        print(header)
+        for i, s in enumerate(report.improvements, 1):
+            if s.issue:
+                print(f"  {i}. Issue: {s.issue}")
+                print(f"     Fix:   {s.suggestion}")
+            else:
+                print(f"  {i}. {s.suggestion}")
+            if s.example:
+                print(f"     e.g.:  {s.example}")
 
 
 def _print_video_report(backend: str, report) -> None:

@@ -21,6 +21,8 @@ from .genome import (
     GenomeDimension,
     AudienceFit,
     PunchUp,
+    Punchline,
+    ImprovementSuggestion,
     ReactionMoment,
     VideoBeat,
     VideoHumorReport,
@@ -146,6 +148,45 @@ class HumorGenomeEngine:
                 return [v]
             return []
 
+        punchlines = []
+        for p in data.get("punchlines", []):
+            if not isinstance(p, dict):
+                # tolerate a bare string punchline
+                if isinstance(p, str) and p.strip():
+                    punchlines.append(Punchline(text=p.strip()))
+                continue
+            text = str(p.get("text", "")).strip()
+            if not text:
+                continue
+            punchlines.append(
+                Punchline(
+                    text=text,
+                    kind=str(p.get("kind", "punchline")),
+                    mechanism=str(p.get("mechanism", "")),
+                    strength=max(0.0, min(10.0, _num(p.get("strength")))),
+                )
+            )
+
+        improvements = []
+        for s in data.get("improvements", []):
+            if isinstance(s, str) and s.strip():
+                improvements.append(ImprovementSuggestion(issue="", suggestion=s.strip()))
+                continue
+            if not isinstance(s, dict):
+                continue
+            suggestion = str(s.get("suggestion", "")).strip()
+            if not suggestion and not s.get("issue"):
+                continue
+            improvements.append(
+                ImprovementSuggestion(
+                    issue=str(s.get("issue", "")),
+                    suggestion=suggestion,
+                    example=str(s.get("example", "")),
+                )
+            )
+
+        funniness = max(0.0, min(10.0, _num(data.get("funniness"))))
+
         return GenomeReport(
             joke=joke,
             setup=str(data.get("setup", "")),
@@ -153,13 +194,16 @@ class HumorGenomeEngine:
             violation=str(data.get("violation", "")),
             payoff_mechanism=str(data.get("payoff_mechanism", "")),
             mechanisms=_as_list(data.get("mechanisms")),
+            punchlines=punchlines,
             dimensions=dimensions,
             cultural_assumptions=_as_list(data.get("cultural_assumptions")),
             timing_notes=str(data.get("timing_notes", "")),
             failure_modes=_as_list(data.get("failure_modes")),
             audiences=audiences_out,
+            improvements=improvements,
             one_line_explanation=str(data.get("one_line_explanation", "")),
-            funniness=max(0.0, min(10.0, _num(data.get("funniness")))),
+            funniness=funniness,
+            needs_work=funniness < 6.0,
             raw_model_output=raw,
         )
 

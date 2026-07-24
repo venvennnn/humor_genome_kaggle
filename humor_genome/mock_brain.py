@@ -70,6 +70,91 @@ def _detect_mechanisms(joke: str) -> List[str]:
     return found[:4]
 
 
+def _split_sentences(joke: str) -> List[str]:
+    # keep the delimiter so question setups stay readable
+    parts = re.split(r"(?<=[.!?])\s+", joke.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _detect_punchlines(joke: str, mechanisms: List[str]) -> List[dict]:
+    """Heuristically locate laugh lines: the last clause, plus any trailing tag."""
+    sentences = _split_sentences(joke)
+    punchlines: List[dict] = []
+    if not sentences:
+        return punchlines
+
+    main = sentences[-1]
+    # a dash/colon inside the final line often separates a punch from a tag
+    tag = ""
+    m = re.split(r"\s[—–-]\s|:\s", main, maxsplit=1)
+    if len(m) == 2 and len(m[1].split()) >= 2:
+        main, tag = m[0].strip(), m[1].strip()
+
+    punchlines.append({
+        "text": main,
+        "kind": "punchline",
+        "mechanism": mechanisms[0] if mechanisms else "incongruity",
+        "strength": _score(joke + "punch", 3.0, 9.0),
+    })
+    if tag:
+        punchlines.append({
+            "text": tag,
+            "kind": "tag/topper",
+            "mechanism": mechanisms[1] if len(mechanisms) > 1 else "callback",
+            "strength": _score(joke + "tag", 2.0, 8.0),
+        })
+    return punchlines
+
+
+def _suggest_improvements(joke: str, dims: List[dict]) -> List[dict]:
+    """Turn the two weakest genome axes into concrete, actionable fixes."""
+    fixes = {
+        "surprise": (
+            "The turn is too predictable — the payoff sits close to what the setup implies.",
+            "Widen the gap: misdirect harder in the setup so the punchline reframes it.",
+            "Set up an innocent assumption, then reveal it meant something else entirely.",
+        ),
+        "specificity": (
+            "The language is generic, so no vivid picture forms.",
+            "Swap vague nouns for one hyper-specific, concrete detail.",
+            "Not 'furniture' but 'a Swedish flat-pack wardrobe named BJÖRKSNÄS'.",
+        ),
+        "cleverness": (
+            "The mechanism is doing little work — there's no wordplay or logical snap.",
+            "Add a double meaning, a reversal, or a rule-of-three build.",
+            "End on a third item that breaks the pattern the first two set.",
+        ),
+        "relatability": (
+            "The premise is niche, so many listeners won't have a stake in it.",
+            "Anchor the setup in a near-universal everyday frustration.",
+            "Open with a moment everyone has lived, then twist it.",
+        ),
+        "edge": (
+            "It plays it safe, so there's no tension to release as a laugh.",
+            "Add a small, well-aimed transgression or an honest, uncomfortable truth.",
+            "Punch at the situation (or yourself), not an easy target.",
+        ),
+        "warmth": (
+            "The tone reads a bit cold, which limits how freely people laugh.",
+            "Aim the joke at yourself or the situation to keep it likeable.",
+            "Reframe the target as shared human folly rather than a put-down.",
+        ),
+    }
+    weakest = sorted(dims, key=lambda d: d["score"])[:2]
+    out = []
+    for d in weakest:
+        issue, suggestion, example = fixes.get(
+            d["name"],
+            ("This axis is weak.", "Tighten and sharpen the beat.", ""),
+        )
+        out.append({
+            "issue": f"[mock] {issue} (low {d['name']}: {d['score']}/10)",
+            "suggestion": suggestion,
+            "example": example,
+        })
+    return out
+
+
 def _mock_analysis(joke: str, audiences: List[str]) -> str:
     words = re.findall(r"[A-Za-z']+", joke)
     n = max(1, len(words))
@@ -111,6 +196,7 @@ def _mock_analysis(joke: str, audiences: List[str]) -> str:
         "violation": "[mock] The payoff reframes an assumption from the setup.",
         "payoff_mechanism": f"[mock] Relies primarily on {mechanisms[0]}.",
         "mechanisms": mechanisms,
+        "punchlines": _detect_punchlines(joke, mechanisms),
         "dimensions": dims,
         "cultural_assumptions": [
             "[mock] Shared familiarity with the words used in the setup.",
@@ -120,6 +206,7 @@ def _mock_analysis(joke: str, audiences: List[str]) -> str:
             "[mock] Falls flat if the audience doesn't share the setup's frame.",
         ],
         "audiences": aud_entries,
+        "improvements": _suggest_improvements(joke, dims),
         "one_line_explanation": (
             f"[mock] It works by setting up one frame and snapping to another via {mechanisms[0]}."
         ),
