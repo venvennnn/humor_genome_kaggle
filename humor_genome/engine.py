@@ -70,20 +70,11 @@ def _strip_trailing_commas(s: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", s)
 
 
-def _close_truncated_json(s: str) -> str:
-    """Best-effort close of a truncated JSON object/array.
-
-    Models often hit the token limit mid-value. This closes any open string,
-    then emits the missing ``]`` / ``}`` in reverse nesting order. Pure Python
-    — no third-party dependency required.
-    """
-    s = s.rstrip()
-    # drop a trailing incomplete key/value separator so closing brackets are valid
-    s = re.sub(r"[,:]\s*$", "", s)
-
+def _bracket_state(s: str):
+    """Scan JSON text, returning (open_bracket_stack, inside_unterminated_string)."""
     in_string = False
     escape = False
-    stack: list[str] = []
+    stack: list = []
     for ch in s:
         if in_string:
             if escape:
@@ -101,16 +92,67 @@ def _close_truncated_json(s: str) -> str:
             stack.append("]")
         elif ch in ("}", "]") and stack and stack[-1] == ch:
             stack.pop()
+    return stack, in_string
 
+
+def _close_truncated_json(s: str) -> str:
+    """Best-effort close of a truncated JSON object/array.
+
+    Models often hit the token limit mid-value. Closes any unterminated string,
+    resolves a dangling key/colon/comma, then appends the missing ``]``/``}``
+    innermost-first. Pure Python — no third-party dependency required.
+    """
+    stack, in_string = _bracket_state(s)
     if in_string:
-        s += '"'
-    # after closing a truncated string, a dangling comma/colon may remain
-    s = re.sub(r"[,:]\s*$", "", s)
-    # drop a truncated trailing key like `"foo"` with no value
-    s = re.sub(r',?\s*"[^"]*"\s*$', "", s)
-    while stack:
-        s += stack.pop()
+        # Terminate the cut-off string so its (partial) value is preserved.
+        # Trailing whitespace must go first: a raw newline inside a JSON string
+        # is an illegal control character.
+        s = s.rstrip() + '"'
+
+    s = s.rstrip()
+    if s.endswith(":"):          # key with no value yet
+        s += " null"
+    s = s.rstrip()
+    if s.endswith(","):          # dangling separator
+        s = s[:-1]
+
+    # Drop a dangling KEY (a quoted string sitting right after '{', '[' or ',',
+    # i.e. with no ':' value). A quoted VALUE is preceded by ':' so it is kept.
+    m = re.search(r'[{\[,]\s*"[^"]*"\s*$', s)
+    if m:
+        s = s[: m.start() + 1].rstrip()
+        if s.endswith(","):
+            s = s[:-1]
+
+    stack, _ = _bracket_state(s)
+    for closer in reversed(stack):
+        s += closer
     return s
+
+
+def _truncation_variants(s: str):
+    """Yield progressively more conservative repairs of truncated JSON.
+
+    First try closing in place (keeps the partial trailing element), then walk
+    back to each earlier complete ``}`` and close from there — which reliably
+    recovers all fully-written list elements.
+    """
+    yield _close_truncated_json(s)
+    idx = len(s)
+    for _ in range(60):
+        idx = s.rfind("}", 0, idx)
+        if idx == -1:
+            break
+        prefix = s[: idx + 1]
+        stack, in_str = _bracket_state(prefix)
+        if in_str or not stack:
+            continue
+        trimmed = prefix.rstrip()
+        if trimmed.endswith(","):
+            trimmed = trimmed[:-1]
+        for closer in reversed(stack):
+            trimmed += closer
+        yield trimmed
 
 
 def _extract_json_candidate(text: str) -> str:
@@ -169,36 +211,40 @@ def _extract_json(text: str) -> dict:
     candidate = _extract_json_candidate(text)
     normalized = _normalize_smart_quotes(candidate)
 
-    attempts = [
-        candidate,
-        _strip_trailing_commas(candidate),
-        normalized,
-        _strip_trailing_commas(normalized),
-        _close_truncated_json(normalized),
-        _strip_trailing_commas(_close_truncated_json(normalized)),
-    ]
-    for attempt in attempts:
+    def _attempts():
+        yield candidate
+        yield _strip_trailing_commas(candidate)
+        yield normalized
+        yield _strip_trailing_commas(normalized)
+        for variant in _truncation_variants(normalized):
+            yield variant
+            yield _strip_trailing_commas(variant)
+
+    best: dict = {}
+    for attempt in _attempts():
         try:
             obj = json.loads(attempt)
-            if isinstance(obj, dict):
-                return obj
         except json.JSONDecodeError:
             continue
+        if isinstance(obj, dict):
+            # keep the richest recovery (most beats survive truncation)
+            if not best or len(json.dumps(obj)) > len(json.dumps(best)):
+                best = obj
+            return best
 
     # optional heavy-duty repair (handles missing quotes, unescaped chars, …)
     try:
         from json_repair import repair_json
 
-        obj = repair_json(normalized, return_objects=True)
-        if isinstance(obj, dict):
-            return obj
-        # also try after our closer, in case repair alone is confused
-        obj = repair_json(_close_truncated_json(normalized), return_objects=True)
-        if isinstance(obj, dict):
-            return obj
+        for text_in in (normalized, _close_truncated_json(normalized)):
+            obj = repair_json(text_in, return_objects=True)
+            if isinstance(obj, dict) and obj:
+                return obj
     except Exception:
         pass
 
+    if best:
+        return best
     raise ValueError("could not parse JSON from model response")
 
 
