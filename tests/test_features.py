@@ -24,6 +24,24 @@ def _engine():
     return HumorGenomeEngine(config=GemmaConfig(backend="mock"))
 
 
+# --------------------------------------------------- robust JSON parsing
+def test_extract_json_smart_quotes():
+    from humor_genome.engine import _extract_json
+    broken = (
+        '{"a": "he said the moment doesn\u2019t resolve into humor.\u201d, '
+        '"b": [1, 2]}'
+    )
+    # normalize should make this parseable and keep the values
+    data = _extract_json(broken)
+    assert "a" in data and data["b"] == [1, 2]
+
+
+def test_extract_json_still_raises_on_garbage():
+    from humor_genome.engine import _extract_json
+    with pytest.raises(ValueError):
+        _extract_json("no json here at all")
+
+
 # --------------------------------------------------------------- clustering
 def test_kmeans_separates_two_blobs():
     a = np.random.default_rng(0).normal(0, 0.2, (10, 6)) + 1
@@ -151,3 +169,9 @@ def test_analyze_video_populates_prediction():
     assert len(report.predicted_laughs) >= 1
     assert len(report.laugh_gaps) >= 1
     assert 0.0 <= report.prediction_hit_rate <= 1.0
+    # full genome should be attached for the clip's transcript
+    assert report.genome is not None
+    assert len(report.genome.dimensions) == 6
+    assert report.genome.audiences
+    # beats carry an 'improvement' field (may be empty for strong beats)
+    assert all(hasattr(b, "improvement") for b in report.beats)
