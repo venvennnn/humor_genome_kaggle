@@ -57,6 +57,45 @@ def test_extract_json_truncated_mid_string():
     assert any("punch" in str(b.get("moment", "")) for b in data["beats"])
 
 
+def test_extract_json_truncated_real_world_no_json_repair(monkeypatch):
+    """Regression: real Gemma output truncated mid-string must recover ALL beats
+    using only stdlib (json-repair may not be installed on the user's machine)."""
+    import builtins
+    from humor_genome.engine import _extract_json
+
+    real_import = builtins.__import__
+
+    def blocked(name, *a, **k):
+        if name.startswith("json_repair"):
+            raise ImportError("simulated missing json_repair")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+
+    # 3 complete beats + a 4th cut off mid-explanation, ending with a newline
+    # (a raw newline inside a JSON string is an illegal control character).
+    raw = (
+        '{\n  "overall_summary": "Weak set with curly \u2019 quotes.",\n'
+        '  "beats": [\n'
+        '    {"start_s": 6.9, "end_s": 7.5, "moment": "chuckle", "is_joke": true,'
+        ' "landed": true, "mechanism": "surprise", "explanation": "short laugh",'
+        ' "improvement": "\\"pause longer\\""},\n'
+        '    {"start_s": 22.1, "end_s": 22.8, "moment": "brief", "is_joke": true,'
+        ' "landed": false, "mechanism": "misdirection", "explanation": "timing off",'
+        ' "improvement": "build up"},\n'
+        '    {"start_s": 38.1, "end_s": 39.9, "moment": "strongest", "is_joke": true,'
+        ' "landed": true, "mechanism": "absurdism", "explanation": "incongruity",'
+        ' "improvement": ""},\n'
+        '    {"start_s": 46.7, "end_s": 47.7, "moment": "max laughter",'
+        ' "is_joke": true, "landed": true, "mechanism": "recognition",'
+        ' "explanation": "This is the strongest moment; it demonstrates a clear understanding\n'
+    )
+    data = _extract_json(raw)
+    assert data["overall_summary"].startswith("Weak set")
+    assert len(data["beats"]) == 4, f"expected all 4 beats, got {len(data['beats'])}"
+    assert data["beats"][-1]["moment"] == "max laughter"
+
+
 def test_extract_json_still_raises_on_garbage():
     from humor_genome.engine import _extract_json
     with pytest.raises(ValueError):
