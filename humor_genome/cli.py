@@ -107,6 +107,18 @@ def _print_video_report(backend: str, report) -> None:
         print(f"      moment: {b.moment}")
         print(f"      why:    {b.explanation}")
 
+    if report.predicted_laughs:
+        matched = [g for g in report.laugh_gaps if g.kind == "matched"]
+        bombed = [g for g in report.laugh_gaps if g.kind == "bombed"]
+        surprise = [g for g in report.laugh_gaps if g.kind == "surprise"]
+        print("\nPredicted vs. actual  (Gemma's blind theory, tested):")
+        print(f"  hit-rate {report.prediction_hit_rate * 100:.0f}%  |  "
+              f"✅ matched {len(matched)}  💀 bombed {len(bombed)}  🎭 surprise {len(surprise)}")
+        for g in bombed:
+            print(f"  💀 @{g.time_s:.1f}s predicted but SILENT: \"{g.quote}\"")
+        for g in surprise:
+            print(f"  🎭 @{g.time_s:.1f}s real laugh the text didn't predict (delivery/physical)")
+
     if report.what_worked:
         print("\nWhat worked:")
         for w in report.what_worked:

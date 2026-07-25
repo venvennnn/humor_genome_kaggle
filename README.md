@@ -51,8 +51,11 @@ didn't they?"** grounded in the *actual audience reaction*:
 4. **Interactive laugh timeline** — a synced video player sits above a
    laugh-intensity waveform; comedic beats are marked and colored by outcome
    (landed / fell flat). **Click a beat** to jump the video there and read
-   Gemma's explanation in a side panel.
-5. **Predicted vs. actual laughter** *(the killer feature)* — Gemma also predicts
+   Gemma's explanation *and a concrete "how to improve"* in a side panel.
+5. **Full humor genome of the clip** — the same deep analysis as the Joke tab
+   (radar of the six axes, funniness, punchlines, audience fit, improvement
+   suggestions, and punch-up) is run on the clip's transcript.
+6. **Predicted vs. actual laughter** *(the killer feature)* — Gemma also predicts
    where laughs *should* land from the transcript **alone**, then we overlay that
    against the measured laughter. The gaps are the story: a predicted laugh over
    silence is a **joke that bombed**; a real laugh the model didn't predict is

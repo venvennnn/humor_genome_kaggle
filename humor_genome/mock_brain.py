@@ -246,6 +246,8 @@ def _mock_video(prompt: str) -> str:
             "landed": it >= 0.4,
             "mechanism": "misdirection" if idx % 2 == 0 else "act-out",
             "explanation": f"[mock] Measured a reaction at {s:.1f}s (intensity {it:.2f}); the payoff broke the setup's expectation.",
+            "improvement": "[mock] Tighten the words before the turn so the punch lands on the last beat."
+            if it < 0.6 else "",
         })
 
     if not beats:
@@ -257,6 +259,7 @@ def _mock_video(prompt: str) -> str:
             "landed": False,
             "mechanism": "observational",
             "explanation": "[mock] No audience reactions were detected in the audio; likely flat or a non-comedic segment.",
+            "improvement": "[mock] Add a concrete, surprising turn — the setup never pays off.",
         })
 
     landed = sum(1 for b in beats if b["landed"])

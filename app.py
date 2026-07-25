@@ -52,23 +52,56 @@ def inject_css() -> None:
     st.markdown(
         """
         <style>
-        .stApp { background: radial-gradient(1200px 500px at 20% -10%, #1e1b4b12, transparent),
-                              radial-gradient(1000px 400px at 100% 0%, #7c3aed10, transparent); }
-        .hg-hero {
-            background: linear-gradient(100deg, #4c1d95, #7c3aed 55%, #db2777);
-            border-radius: 18px; padding: 22px 28px; color: white; margin-bottom: 8px;
-            box-shadow: 0 10px 30px rgba(124,58,237,0.25);
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        .stApp {
+            background:
+              radial-gradient(1100px 480px at 12% -12%, #ede9ff 0%, transparent 60%),
+              radial-gradient(1000px 460px at 100% -6%, #ffe4f3 0%, transparent 55%),
+              #faf9ff;
         }
-        .hg-hero h1 { color: white; margin: 0; font-size: 2.05rem; }
-        .hg-hero p { color: #f3e8ff; margin: 6px 0 0 0; font-size: 0.98rem; }
-        .hg-pill { display:inline-block; background:#ffffff22; border:1px solid #ffffff44;
-                   color:white; padding:2px 10px; border-radius:999px; font-size:0.72rem;
-                   margin-right:6px; margin-top:8px; }
-        .stTabs [data-baseweb="tab"] { font-size: 1rem; font-weight: 600; }
-        .stTabs [aria-selected="true"] { color: #7c3aed; }
-        div[data-testid="stMetricValue"] { font-size: 1.5rem; }
-        .hg-chip { background:#ede9fe; color:#5b21b6; padding:2px 10px; border-radius:999px;
-                   margin-right:6px; font-size:0.82em; white-space:nowrap; }
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #faf5ff, #f3e8ff);
+            border-right: 1px solid #ece5ff;
+        }
+        .hg-hero {
+            background: linear-gradient(115deg, #4c1d95 0%, #7c3aed 48%, #db2777 100%);
+            border-radius: 20px; padding: 26px 32px; color: white; margin-bottom: 14px;
+            box-shadow: 0 18px 40px rgba(124,58,237,0.30);
+            position: relative; overflow: hidden;
+        }
+        .hg-hero:after {
+            content:""; position:absolute; right:-40px; top:-40px; width:220px; height:220px;
+            background: radial-gradient(circle, #ffffff33, transparent 70%); border-radius:50%;
+        }
+        .hg-hero h1 { color: white; margin: 0; font-size: 2.2rem; font-weight: 800; letter-spacing:-0.5px; }
+        .hg-hero p { color: #f3e8ff; margin: 8px 0 0 0; font-size: 1.0rem; max-width: 780px; }
+        .hg-pill { display:inline-block; background:#ffffff22; border:1px solid #ffffff55;
+                   color:white; padding:3px 12px; border-radius:999px; font-size:0.74rem;
+                   margin-right:7px; margin-top:10px; font-weight:600; backdrop-filter: blur(4px); }
+        .stTabs [data-baseweb="tab-list"] { gap: 6px; }
+        .stTabs [data-baseweb="tab"] {
+            font-size: 1rem; font-weight: 700; border-radius: 10px 10px 0 0; padding: 8px 16px;
+        }
+        .stTabs [aria-selected="true"] { color: #7c3aed; background: #f3e8ff; }
+        div[data-testid="stMetric"] {
+            background: #ffffff; border: 1px solid #eee6ff; border-radius: 14px;
+            padding: 12px 16px; box-shadow: 0 4px 14px rgba(124,58,237,0.06);
+        }
+        div[data-testid="stMetricValue"] { font-size: 1.5rem; color:#5b21b6; font-weight:800; }
+        .stButton>button {
+            border-radius: 10px; font-weight: 700; border: 0;
+        }
+        .stButton>button[kind="primary"] {
+            background: linear-gradient(100deg, #7c3aed, #db2777);
+            box-shadow: 0 6px 18px rgba(124,58,237,0.30);
+        }
+        div[data-testid="stExpander"] { border-radius: 12px; border: 1px solid #eee6ff; }
+        .hg-chip { background:#ede9fe; color:#5b21b6; padding:3px 11px; border-radius:999px;
+                   margin-right:6px; font-size:0.82em; white-space:nowrap; font-weight:600; }
+        .hg-section { font-size:1.05rem; font-weight:800; color:#4c1d95; margin: 4px 0 2px 0; }
+        .hg-card { background:#fff; border:1px solid #eee6ff; border-radius:14px; padding:14px 18px;
+                   box-shadow:0 4px 14px rgba(124,58,237,0.05); margin-bottom:10px; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -80,13 +113,14 @@ def hero() -> None:
         """
         <div class="hg-hero">
           <h1>🎭 Why'd They Laugh?</h1>
-          <p>A Gemma-powered humor <b>understanding</b> engine — dissect a joke, watch a clip
-          with a live laugh timeline, and pit the AI's theory of the joke against the real crowd.</p>
-          <span class="hg-pill">Gemma 3 / 3n</span>
-          <span class="hg-pill">Humor genome</span>
-          <span class="hg-pill">Predicted vs. actual laughs</span>
-          <span class="hg-pill">Style fingerprint</span>
-          <span class="hg-pill">Callback attribution</span>
+          <p>A Gemma-powered humor <b>understanding</b> engine. Drop in a comedy clip to see a
+          live laugh timeline, a full humor genome, and the AI's theory of the joke tested
+          against the real crowd — laugh by laugh.</p>
+          <span class="hg-pill">🎬 Live laugh timeline</span>
+          <span class="hg-pill">🔮 Predicted vs. actual</span>
+          <span class="hg-pill">🧬 Humor genome</span>
+          <span class="hg-pill">🎯 Audience personas</span>
+          <span class="hg-pill">🔗 Callback attribution</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -262,7 +296,7 @@ def interactive_timeline(report: VideoHumorReport) -> go.Figure:
     return fig
 
 
-def render_video_report(report: VideoHumorReport) -> None:
+def render_video_report(report: VideoHumorReport, engine=None, audiences=None) -> None:
     m = st.columns(5)
     m[0].metric("Duration", f"{report.duration_s:.0f}s")
     m[1].metric("Laughs detected", len(report.reactions))
@@ -310,11 +344,14 @@ def render_video_report(report: VideoHumorReport) -> None:
             if b.mechanism:
                 st.markdown(f"**Mechanism:** `{b.mechanism}`")
             st.markdown(f"**Why:** {b.explanation}")
+            if b.improvement:
+                st.markdown(f"**🛠️ How to improve:** {b.improvement}")
             if st.button("▶️ Jump video to this beat", key="jump_btn"):
                 st.session_state["seek_s"] = int(b.start_s)
                 st.rerun()
         else:
-            st.info("👈 Click a beat triangle on the timeline to inspect it here.")
+            st.info("👈 Click a beat triangle on the timeline to inspect it — you'll see the "
+                    "joke, whether it landed, why, and how to improve it.")
 
     _render_prediction_section(report)
 
@@ -328,6 +365,16 @@ def render_video_report(report: VideoHumorReport) -> None:
         st.markdown("##### 🪫 What fell flat")
         for w in report.what_fell_flat or ["—"]:
             st.markdown(f"- {w}")
+
+    # Full humor genome of the clip's material (same as the Joke tab)
+    if report.genome is not None:
+        st.divider()
+        st.markdown("## 🧬 Humor genome of this clip")
+        st.caption("The same deep analysis as the Joke tab, run on the clip's transcript.")
+        render_report(report.genome)
+        if engine is not None:
+            st.divider()
+            render_punchup(engine, report.genome, audiences or ["General public"], key_prefix="video")
 
     with st.expander("🔎 Raw model output"):
         st.code(report.raw_model_output or "(none)", language="json")
@@ -517,27 +564,34 @@ def text_tab(engine: HumorGenomeEngine, audiences: list) -> None:
     if report:
         render_report(report)
         st.divider()
-        st.markdown("### ✍️ Punch it up")
-        pu_cols = st.columns([2, 1])
-        target = pu_cols[0].selectbox("Rewrite to land harder with…", audiences, key="punch_target")
-        if pu_cols[1].button("Rewrite with Gemma"):
-            with st.spinner("Rewriting…"):
-                try:
-                    punch = engine.punch_up(report, target)
-                    st.success(punch.rewrite)
-                    st.caption(
-                        f"**Mechanism changed:** {punch.mechanism_changed}  \n"
-                        f"**Why it's better:** {punch.why_better}"
-                    )
-                except Exception as exc:
-                    st.error(_backend_error_message(engine, exc))
+        render_punchup(engine, report, audiences, key_prefix="text")
 
 
-def video_tab(engine: HumorGenomeEngine) -> None:
+def render_punchup(engine, report, audiences, key_prefix: str) -> None:
+    st.markdown("### ✍️ Punch it up")
+    pu_cols = st.columns([2, 1])
+    target = pu_cols[0].selectbox(
+        "Rewrite to land harder with…", audiences, key=f"punch_target_{key_prefix}"
+    )
+    if pu_cols[1].button("Rewrite with Gemma", key=f"punch_btn_{key_prefix}"):
+        with st.spinner("Rewriting…"):
+            try:
+                punch = engine.punch_up(report, target)
+                st.success(punch.rewrite)
+                st.caption(
+                    f"**Mechanism changed:** {punch.mechanism_changed}  \n"
+                    f"**Why it's better:** {punch.why_better}"
+                )
+            except Exception as exc:
+                st.error(_backend_error_message(engine, exc))
+
+
+def video_tab(engine: HumorGenomeEngine, audiences=None) -> None:
     st.markdown(
         "Upload a short comedy clip. We detect where the **audience actually laughs** "
-        "(from the audio), let you **click through beats on a synced timeline**, and pit "
-        "Gemma's **predicted** laughs against the real ones."
+        "(from the audio), let you **click through beats on a synced timeline**, run the "
+        "**full humor genome** on the material, and pit Gemma's **predicted** laughs against "
+        "the real ones."
     )
     if not ffmpeg_available():
         st.error("`ffmpeg` is not installed, so video decoding is disabled here.")
@@ -567,7 +621,7 @@ def video_tab(engine: HumorGenomeEngine) -> None:
 
     vr = st.session_state.get("video_report")
     if vr:
-        render_video_report(vr)
+        render_video_report(vr, engine=engine, audiences=audiences)
 
 
 SAMPLE_SET = """So I bought a treadmill to get in shape. It is now the most expensive coat rack I have ever owned.
@@ -688,11 +742,11 @@ def main() -> None:
     hero()
     engine, audiences = sidebar_controls()
 
-    tabs = st.tabs(["🗣️ Joke", "🎬 Clip", "🎤 Set / Special", "ℹ️ About"])
+    tabs = st.tabs(["🎬 Clip (video)", "🗣️ Joke", "🎤 Set / Special", "ℹ️ About"])
     with tabs[0]:
-        text_tab(engine, audiences)
+        video_tab(engine, audiences)
     with tabs[1]:
-        video_tab(engine)
+        text_tab(engine, audiences)
     with tabs[2]:
         set_tab(engine)
     with tabs[3]:

@@ -2,6 +2,7 @@ streamlit>=1.36.0
 plotly>=5.22.0
 requests>=2.31.0
 numpy>=1.24.0
+json-repair>=0.25.0   # tolerant JSON parsing of model output (recommended)
 
 # System dependency (not a pip package): ffmpeg + ffprobe are required for the
 # video feature (frame + audio extraction). Install via your OS package manager,
