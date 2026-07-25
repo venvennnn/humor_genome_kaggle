@@ -70,38 +70,118 @@ def _strip_trailing_commas(s: str) -> str:
     return re.sub(r",\s*([}\]])", r"\1", s)
 
 
+def _close_truncated_json(s: str) -> str:
+    """Best-effort close of a truncated JSON object/array.
+
+    Models often hit the token limit mid-value. This closes any open string,
+    then emits the missing ``]`` / ``}`` in reverse nesting order. Pure Python
+    — no third-party dependency required.
+    """
+    s = s.rstrip()
+    # drop a trailing incomplete key/value separator so closing brackets are valid
+    s = re.sub(r"[,:]\s*$", "", s)
+
+    in_string = False
+    escape = False
+    stack: list[str] = []
+    for ch in s:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in ("}", "]") and stack and stack[-1] == ch:
+            stack.pop()
+
+    if in_string:
+        s += '"'
+    # after closing a truncated string, a dangling comma/colon may remain
+    s = re.sub(r"[,:]\s*$", "", s)
+    # drop a truncated trailing key like `"foo"` with no value
+    s = re.sub(r',?\s*"[^"]*"\s*$', "", s)
+    while stack:
+        s += stack.pop()
+    return s
+
+
+def _extract_json_candidate(text: str) -> str:
+    """Pull the most likely JSON object string out of a model response."""
+    # complete fenced block
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    if fenced:
+        return fenced.group(1)
+
+    # fenced but truncated (opening fence, no closing) — take rest of text
+    fenced_open = re.search(r"```(?:json)?\s*(\{.*)", text, re.DOTALL)
+    if fenced_open:
+        return fenced_open.group(1)
+
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("no JSON object found in model response")
+
+    # Prefer a balanced outer object when one exists; otherwise take to EOF
+    # (truncated responses have no closing '}').
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text[start:], start=start):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    # never balanced — truncated; take everything from the opening brace
+    return text[start:]
+
+
 def _extract_json(text: str) -> dict:
     """Pull the first JSON object out of a model response.
 
-    Robust to code fences, leading/trailing prose, trailing commas, and smart
-    quotes. Falls back to the ``json_repair`` library when available. Raises
-    ValueError only if nothing parseable can be recovered.
+    Robust to code fences, leading/trailing prose, trailing commas, smart
+    quotes, AND truncated output (token-limit cutoffs mid-object). Falls back
+    to the ``json_repair`` library when available. Raises ValueError only if
+    nothing parseable can be recovered.
     """
     if not text:
         raise ValueError("empty model response")
 
-    # strip common markdown code fences
-    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
-    candidate = fenced.group(1) if fenced else None
+    candidate = _extract_json_candidate(text)
+    normalized = _normalize_smart_quotes(candidate)
 
-    if candidate is None:
-        # find the outermost {...} span
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise ValueError("no JSON object found in model response")
-        candidate = text[start : end + 1]
-
-    # try a series of increasingly forgiving repairs
     attempts = [
         candidate,
         _strip_trailing_commas(candidate),
-        _normalize_smart_quotes(candidate),
-        _strip_trailing_commas(_normalize_smart_quotes(candidate)),
+        normalized,
+        _strip_trailing_commas(normalized),
+        _close_truncated_json(normalized),
+        _strip_trailing_commas(_close_truncated_json(normalized)),
     ]
     for attempt in attempts:
         try:
-            return json.loads(attempt)
+            obj = json.loads(attempt)
+            if isinstance(obj, dict):
+                return obj
         except json.JSONDecodeError:
             continue
 
@@ -109,7 +189,11 @@ def _extract_json(text: str) -> dict:
     try:
         from json_repair import repair_json
 
-        obj = repair_json(_normalize_smart_quotes(candidate), return_objects=True)
+        obj = repair_json(normalized, return_objects=True)
+        if isinstance(obj, dict):
+            return obj
+        # also try after our closer, in case repair alone is confused
+        obj = repair_json(_close_truncated_json(normalized), return_objects=True)
         if isinstance(obj, dict):
             return obj
     except Exception:
@@ -363,11 +447,18 @@ class HumorGenomeEngine:
                 has_frames=with_frames,
             )
 
+        # Video JSON is long (many beats + improvements). Use a higher token
+        # budget so Gemma doesn't get cut off mid-object (the #1 parse failure).
+        video_max_tokens = max(self.client.config.max_tokens, 4096)
+
         raw = ""
         if frame_paths:
             try:
                 raw = self.client.generate(
-                    _build_prompt(True), system=SYSTEM_PROMPT, images=frame_paths
+                    _build_prompt(True),
+                    system=SYSTEM_PROMPT,
+                    images=frame_paths,
+                    max_tokens=video_max_tokens,
                 )
                 report.multimodal_used = True
             except Exception as exc:  # vision model missing / rejects images
@@ -381,7 +472,11 @@ class HumorGenomeEngine:
         if not raw:
             # text-only path (no frames, or the vision call failed above)
             report.multimodal_used = False
-            raw = self.client.generate(_build_prompt(False), system=SYSTEM_PROMPT)
+            raw = self.client.generate(
+                _build_prompt(False),
+                system=SYSTEM_PROMPT,
+                max_tokens=video_max_tokens,
+            )
 
         if not report.multimodal_used:
             report.frames_analyzed = 0
@@ -391,7 +486,20 @@ class HumorGenomeEngine:
         try:
             data = _extract_json(raw)
         except ValueError:
-            report.overall_summary = "(could not parse model output)"
+            # Truncation / malformed JSON — keep the reaction timeline we already
+            # built and surface a useful note instead of a blank report.
+            looks_truncated = not raw.rstrip().endswith("}")
+            report.overall_summary = (
+                "(model output was truncated mid-JSON — raised the token budget; "
+                "re-run the analysis. The laugh timeline above is still valid.)"
+                if looks_truncated
+                else "(could not parse model output — see raw output below)"
+            )
+            report.notes.append(
+                "Gemma's JSON was incomplete or invalid, so beat-by-beat reasoning "
+                "couldn't be loaded. The measured laughter timeline is still accurate. "
+                "Tip: re-run, or set HUMOR_GENOME_MAX_TOKENS=4096."
+            )
             return report
 
         report.overall_summary = str(data.get("overall_summary", ""))
@@ -417,12 +525,24 @@ class HumorGenomeEngine:
                 landed=bool(b.get("landed", False)),
                 mechanism=str(b.get("mechanism", "")),
                 explanation=str(b.get("explanation", "")),
-                improvement=str(b.get("improvement", "")),
+                improvement=str(b.get("improvement", "")).strip().strip('"'),
             )
             beat.audience_reaction = round(
                 10.0 * self._reaction_near(reactions, start_s, end_s), 1
             )
             report.beats.append(beat)
+
+        # When the model was truncated before writing what_worked/fell_flat,
+        # synthesize them from the beats so the UI isn't empty.
+        if not report.what_worked:
+            report.what_worked = [
+                f"{b.moment} ({b.mechanism})" for b in report.beats if b.landed and b.moment
+            ][:3] or ["(no landed beats recorded)"]
+        if not report.what_fell_flat:
+            report.what_fell_flat = [
+                (b.improvement or b.explanation or b.moment)
+                for b in report.beats if (not b.landed) and b.is_joke
+            ][:3] or ["(no flat joke-beats recorded)"]
 
         # Feature: predicted-vs-actual laughter (the model's theory, tested)
         if plain:

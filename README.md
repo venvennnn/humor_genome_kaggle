@@ -190,6 +190,7 @@ Environment variables:
 - `HUMOR_GENOME_OLLAMA_VISION_MODEL` — default `gemma3` (video/images)
 - `HUMOR_GENOME_HF_MODEL` — default `google/gemma-3-4b-it`
 - `HUMOR_GENOME_HF_VISION_MODEL` — default `google/gemma-3-4b-it`
+- `HUMOR_GENOME_MAX_TOKENS` — default `2048` (video analysis uses at least `4096`)
 - `OLLAMA_HOST` — default `http://localhost:11434`
 
 > The vision model defaults to **Gemma 3** because its image support is reliable

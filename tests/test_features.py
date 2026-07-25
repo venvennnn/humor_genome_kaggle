@@ -36,6 +36,27 @@ def test_extract_json_smart_quotes():
     assert "a" in data and data["b"] == [1, 2]
 
 
+def test_extract_json_truncated_mid_string():
+    """Token-limit cutoffs mid-value used to yield '(could not parse model output)'."""
+    from humor_genome.engine import _extract_json
+    truncated = (
+        '{\n'
+        '  "overall_summary": "A weak bit.",\n'
+        '  "beats": [\n'
+        '    {"start_s": 1, "end_s": 2, "moment": "setup", "is_joke": true, '
+        '"landed": true, "mechanism": "misdirection", "explanation": "ok", '
+        '"improvement": ""},\n'
+        '    {"start_s": 3, "end_s": 4, "moment": "punch", "is_joke": true, '
+        '"landed": true, "mechanism": "absurdism", '
+        '"explanation": "This is the strongest moment; it demonstrates a clear understanding\n'
+    )
+    data = _extract_json(truncated)
+    assert data["overall_summary"] == "A weak bit."
+    assert len(data["beats"]) >= 1
+    # the incomplete final beat should still be recoverable
+    assert any("punch" in str(b.get("moment", "")) for b in data["beats"])
+
+
 def test_extract_json_still_raises_on_garbage():
     from humor_genome.engine import _extract_json
     with pytest.raises(ValueError):
