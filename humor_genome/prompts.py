@@ -105,32 +105,32 @@ MEASURED AUDIENCE REACTIONS (detected from the audio track — timestamps where 
 
 {frame_note}
 
-Break the clip into comedic BEATS. For each beat decide whether it is a joke, whether the audience actually laughed (cross-reference the measured reactions), and explain the comedic mechanism and WHY it landed or fell flat.
+Break the clip into at most 8 comedic BEATS (merge tiny reaction flickers). For each beat decide whether it is a joke, whether the audience actually laughed (cross-reference the measured reactions), and briefly explain WHY.
 
 Return ONLY a JSON object with EXACTLY these keys:
 {{
-  "overall_summary": "2-3 sentences: what kind of comedy this is and how it performed",
+  "overall_summary": "1-2 sentences: what kind of comedy this is and how it performed",
   "beats": [
     {{
       "start_s": <number>,
       "end_s": <number>,
-      "moment": "what happens / the line delivered",
+      "moment": "short description of the line / what happens",
       "is_joke": <true|false>,
       "landed": <true|false, grounded in the measured reactions>,
-      "mechanism": "<comedic mechanism, e.g. misdirection/act-out/callback/taboo/absurdism>",
-      "explanation": "WHY it landed (what expectation was violated) or WHY it fell flat",
-      "improvement": "a concrete, specific fix to make this beat funnier (especially if it fell flat); empty string if it already kills"
+      "mechanism": "<short mechanism, e.g. misdirection/act-out/callback/taboo/absurdism>",
+      "explanation": "ONE short sentence: WHY it landed or fell flat",
+      "improvement": "ONE short concrete fix if it fell flat; empty string if it kills"
     }}
   ],
-  "what_worked": ["concrete reasons the laughs happened"],
-  "what_fell_flat": ["moments that got no reaction and why"]
+  "what_worked": ["up to 3 short reasons the laughs happened"],
+  "what_fell_flat": ["up to 3 short moments that got no reaction and why"]
 }}
 
 Rules:
 - Ground "landed" in the measured reactions: a beat landed if a reaction occurs at/just after it.
-- If a beat is a joke but got no measured laugh, set landed=false and explain the likely reason (timing, unclear setup, wrong audience, cultural reference).
+- Keep every string SHORT (under ~20 words) so the JSON fits in one reply.
 - Use plain ASCII quotes (") only — never curly/smart quotes.
-- Return ONLY the JSON object, nothing else."""
+- Return ONLY the complete JSON object, nothing else. Do not cut off mid-string."""
 
 
 def laugh_prediction_prompt(transcript: str, duration_s: float) -> str:

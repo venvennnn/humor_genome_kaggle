@@ -66,7 +66,8 @@ class GemmaConfig:
     ollama_vision_model: str = DEFAULT_OLLAMA_VISION_MODEL
     hf_vision_model: str = DEFAULT_HF_VISION_MODEL
     temperature: float = 0.8
-    max_tokens: int = 1024
+    # Video reports emit long JSON (many beats); 1024 routinely truncates mid-object.
+    max_tokens: int = int(os.environ.get("HUMOR_GENOME_MAX_TOKENS", "2048"))
     request_timeout: int = 180
 
 
@@ -145,17 +146,21 @@ class GemmaClient:
         prompt: str,
         system: Optional[str] = None,
         images: Optional[list] = None,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Return a completion for ``prompt``.
 
         ``images`` is an optional list of image file paths (JPEG/PNG). They are
         only used by multimodal Gemma backends (Gemma 3 / 3n); the mock ignores
-        the pixels but still routes on the prompt. Never raises for mock.
+        the pixels but still routes on the prompt. ``max_tokens`` overrides the
+        config default for this call (use a higher budget for long video JSON).
+        Never raises for mock.
         """
+        tokens = max_tokens if max_tokens is not None else self.config.max_tokens
         if self.active_backend == "ollama":
-            return self._generate_ollama(prompt, system, images)
+            return self._generate_ollama(prompt, system, images, tokens)
         if self.active_backend == "hf":
-            return self._generate_hf(prompt, system, images)
+            return self._generate_hf(prompt, system, images, tokens)
         return self._generate_mock(prompt, system)
 
     @property
@@ -177,7 +182,11 @@ class GemmaClient:
         return encoded
 
     def _generate_ollama(
-        self, prompt: str, system: Optional[str], images: Optional[list] = None
+        self,
+        prompt: str,
+        system: Optional[str],
+        images: Optional[list] = None,
+        max_tokens: Optional[int] = None,
     ) -> str:
         encoded = self._encode_images(images)
         model = self.config.ollama_vision_model if encoded else self.config.ollama_model
@@ -187,7 +196,7 @@ class GemmaClient:
             "stream": False,
             "options": {
                 "temperature": self.config.temperature,
-                "num_predict": self.config.max_tokens,
+                "num_predict": max_tokens if max_tokens is not None else self.config.max_tokens,
             },
         }
         if system:
@@ -222,7 +231,11 @@ class GemmaClient:
         return resp.json().get("response", "")
 
     def _generate_hf(
-        self, prompt: str, system: Optional[str], images: Optional[list] = None
+        self,
+        prompt: str,
+        system: Optional[str],
+        images: Optional[list] = None,
+        max_tokens: Optional[int] = None,
     ) -> str:
         content = []
         for img in images or []:
@@ -234,7 +247,7 @@ class GemmaClient:
         messages.append({"role": "user", "content": content if images else prompt})
         out = self._hf_pipe(
             messages,
-            max_new_tokens=self.config.max_tokens,
+            max_new_tokens=max_tokens if max_tokens is not None else self.config.max_tokens,
             temperature=self.config.temperature,
             do_sample=self.config.temperature > 0,
         )

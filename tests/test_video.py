@@ -132,7 +132,7 @@ def test_analyze_video_falls_back_when_vision_fails():
         def supports_images(self):
             return True
 
-        def generate(self, prompt, system=None, images=None):
+        def generate(self, prompt, system=None, images=None, max_tokens=None):
             if images:
                 raise RuntimeError("400: model does not support images")
             return mock_response(prompt)
