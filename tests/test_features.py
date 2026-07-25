@@ -235,3 +235,35 @@ def test_analyze_video_populates_prediction():
     assert report.genome.audiences
     # beats carry an 'improvement' field (may be empty for strong beats)
     assert all(hasattr(b, "improvement") for b in report.beats)
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not installed")
+def test_video_genome_without_transcript():
+    """Radar/genome must still appear when no transcript is supplied — it is
+    derived from the detected beats instead."""
+    rate, dur = 16000, 10
+    t = np.linspace(0, dur, dur * rate, endpoint=False)
+    sig = 0.05 * np.sin(2 * np.pi * 180 * t)
+    for a, b in [(3.0, 4.0), (7.0, 8.0)]:
+        m = (t >= a) & (t < b)
+        sig[m] += 0.6 * np.random.default_rng(1).standard_normal(int(m.sum()))
+    sig = np.clip(sig, -1, 1)
+    tmp = tempfile.mkdtemp()
+    wav = os.path.join(tmp, "a.wav")
+    with wave.open(wav, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+        w.writeframes((sig * 32767).astype(np.int16).tobytes())
+    mp4 = os.path.join(tmp, "clip.mp4")
+    subprocess.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i",
+         f"testsrc=duration={dur}:size=320x240:rate=10", "-i", wav,
+         "-shortest", "-pix_fmt", "yuv420p", mp4],
+        capture_output=True, check=True,
+    )
+    report = _engine().analyze_video(mp4, transcript="")
+    assert report.genome is not None, "genome should be derived from beats"
+    assert len(report.genome.dimensions) == 6      # radar has all six axes
+    assert report.genome.audiences                  # audience scores present
+    # predicted-vs-actual legitimately needs words, so it stays empty
+    assert report.predicted_laughs == []
+    assert any("No transcript" in n for n in report.notes)

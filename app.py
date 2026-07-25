@@ -366,11 +366,33 @@ def render_video_report(report: VideoHumorReport, engine=None, audiences=None) -
         for w in report.what_fell_flat or ["—"]:
             st.markdown(f"- {w}")
 
+    # All per-beat fixes in one place (no clicking required)
+    fixes = [b for b in report.beats if b.improvement]
+    if fixes:
+        st.divider()
+        st.markdown("##### 🛠️ How to improve this clip, beat by beat")
+        st.caption("Gemma's concrete fix for each beat — flat beats first.")
+        for b in sorted(fixes, key=lambda x: (x.landed, x.start_s)):
+            icon = "😂" if b.landed else "🦗"
+            with st.container(border=True):
+                st.markdown(
+                    f"{icon} **{b.start_s:.1f}–{b.end_s:.1f}s** · "
+                    f"{'landed' if b.landed else 'no laugh'}"
+                    f"{f' · `{b.mechanism}`' if b.mechanism else ''}"
+                )
+                if b.moment:
+                    st.markdown(f"_{b.moment}_")
+                st.markdown(f"**Fix:** {b.improvement}")
+
     # Full humor genome of the clip's material (same as the Joke tab)
     if report.genome is not None:
         st.divider()
         st.markdown("## 🧬 Humor genome of this clip")
-        st.caption("The same deep analysis as the Joke tab, run on the clip's transcript.")
+        st.caption(
+            "The same deep analysis as the Joke tab — radar of the six axes, scores "
+            "out of 10, punchlines, audience fit and fixes. Run on the clip's "
+            "transcript when you provide one, otherwise on the beats Gemma detected."
+        )
         render_report(report.genome)
         if engine is not None:
             st.divider()
@@ -598,11 +620,19 @@ def video_tab(engine: HumorGenomeEngine, audiences=None) -> None:
 
     up = st.file_uploader("Comedy clip", type=["mp4", "mov", "mkv", "webm", "avi", "m4v"])
     transcript = st.text_area(
-        "Transcript (optional but unlocks predicted-vs-actual — plain text, .srt or .vtt)",
+        "Transcript — paste the clip's words to unlock predicted-vs-actual "
+        "(plain text, .srt or .vtt)",
         height=110,
-        help="Timestamps (SRT/VTT) let us align predicted + real laughs precisely.",
-        placeholder="00:00:03,000 --> 00:00:06,000\nSo I tried to assemble the furniture...",
+        help="Timestamps (SRT/VTT) let us align predicted + real laughs precisely. "
+             "Leave empty and the genome is derived from detected beats instead.",
+        placeholder="(empty — this grey text is just an example, not a transcript)\n"
+                    "00:00:03,000 --> 00:00:06,000\nSo I tried to assemble the furniture...",
     )
+    if not transcript.strip():
+        st.caption(
+            "ℹ️ No transcript entered — you'll still get the laugh timeline, beats, "
+            "fixes and a genome, but **predicted-vs-actual needs the words**."
+        )
 
     if st.button("🎬 Analyze the clip", type="primary") and up is not None:
         suffix = os.path.splitext(up.name)[1] or ".mp4"
