@@ -133,6 +133,25 @@ def get_engine(backend: str) -> HumorGenomeEngine:
     return HumorGenomeEngine(config=config)
 
 
+def _video_error_message(engine: HumorGenomeEngine, exc: Exception) -> str:
+    """Timeouts are the common video failure — give speed-specific advice."""
+    text = str(exc).lower()
+    if "timeout" in text or "timed out" in text or "read timed out" in text:
+        return (
+            "**Gemma timed out on this clip.** Local inference over video frames is "
+            "slow — the vision call alone can take several minutes on CPU.\n\n"
+            "Try, in order:\n"
+            "1. Open **⚡ Speed / quality settings** and set **Frames sent to Gemma → 0** "
+            "(skips the slow vision call; you keep the laugh timeline, beats and genome).\n"
+            "2. Untick **Predicted vs. actual** and/or **Humor genome** to drop the extra calls.\n"
+            "3. Use a smaller/faster model: `ollama pull gemma3:4b` and "
+            "`set HUMOR_GENOME_OLLAMA_MODEL=gemma3:4b`.\n"
+            "4. Raise the limit: `set HUMOR_GENOME_TIMEOUT=1800` before launching.\n\n"
+            f"```\n{exc}\n```"
+        )
+    return _backend_error_message(engine, exc)
+
+
 def _backend_error_message(engine: HumorGenomeEngine, exc: Exception) -> str:
     return (
         f"The **{engine.describe_backend()}** backend returned an error:\n\n"
@@ -634,6 +653,25 @@ def video_tab(engine: HumorGenomeEngine, audiences=None) -> None:
             "fixes and a genome, but **predicted-vs-actual needs the words**."
         )
 
+    with st.expander("⚡ Speed / quality settings", expanded=False):
+        st.caption(
+            "Each analysis makes up to **3 sequential Gemma calls**, and image "
+            "frames are the slowest part. On a local CPU this can take several "
+            "minutes — turn stages off or use fewer frames to go faster."
+        )
+        sc = st.columns(3)
+        n_frames = sc[0].slider(
+            "Frames sent to Gemma", 0, 6, 3,
+            help="0 = skip vision entirely (fastest). Each frame adds ~256 tokens.",
+        )
+        do_predict = sc[1].checkbox(
+            "Predicted vs. actual", value=True,
+            help="Extra Gemma call. Needs a transcript.",
+        )
+        do_genome = sc[2].checkbox(
+            "Humor genome", value=True, help="Extra Gemma call (radar, audience fit).",
+        )
+
     if st.button("🎬 Analyze the clip", type="primary") and up is not None:
         suffix = os.path.splitext(up.name)[1] or ".mp4"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tf:
@@ -642,11 +680,20 @@ def video_tab(engine: HumorGenomeEngine, audiences=None) -> None:
         st.session_state["video_path"] = path
         st.session_state["selected_beat"] = None
         st.session_state["seek_s"] = 0
-        with st.spinner("Detecting laughs and asking Gemma why they laughed…"):
+        with st.status("Analyzing clip…", expanded=True) as status:
             try:
-                st.session_state["video_report"] = engine.analyze_video(path, transcript=transcript)
+                st.session_state["video_report"] = engine.analyze_video(
+                    path,
+                    transcript=transcript,
+                    n_frames=n_frames,
+                    predict_laughs=do_predict,
+                    build_genome=do_genome,
+                    on_progress=lambda m: status.update(label=m),
+                )
+                status.update(label="Analysis complete", state="complete")
             except Exception as exc:
-                st.error(_backend_error_message(engine, exc))
+                status.update(label="Analysis failed", state="error")
+                st.error(_video_error_message(engine, exc))
                 st.session_state.pop("video_report", None)
 
     vr = st.session_state.get("video_report")

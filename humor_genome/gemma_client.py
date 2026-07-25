@@ -68,7 +68,11 @@ class GemmaConfig:
     temperature: float = 0.8
     # Video reports emit long JSON (many beats); 1024 routinely truncates mid-object.
     max_tokens: int = int(os.environ.get("HUMOR_GENOME_MAX_TOKENS", "2048"))
-    request_timeout: int = 180
+    # Local CPU inference on a multi-image prompt can easily exceed 3 minutes.
+    request_timeout: int = int(os.environ.get("HUMOR_GENOME_TIMEOUT", "900"))
+    # Keep the model resident between the sequential calls of one analysis,
+    # otherwise Ollama may unload and reload the weights each time.
+    keep_alive: str = os.environ.get("HUMOR_GENOME_KEEP_ALIVE", "10m")
 
 
 class GemmaClient:
@@ -194,6 +198,7 @@ class GemmaClient:
             "model": model,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": self.config.keep_alive,
             "options": {
                 "temperature": self.config.temperature,
                 "num_predict": max_tokens if max_tokens is not None else self.config.max_tokens,

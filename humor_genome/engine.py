@@ -419,16 +419,36 @@ class HumorGenomeEngine:
         self,
         video_path: str,
         transcript: str = "",
-        n_frames: int = 6,
+        n_frames: Optional[int] = None,
+        predict_laughs: bool = True,
+        build_genome: bool = True,
+        on_progress: Optional[callable] = None,
     ) -> VideoHumorReport:
         """Analyze a comedy clip: detect audience reactions, then have Gemma
         explain why each beat did or didn't land.
+
+        This makes up to THREE sequential Gemma calls (beats, blind laugh
+        prediction, humor genome). On local CPU inference each can take minutes,
+        so the two optional stages can be switched off for speed, and
+        ``on_progress(msg)`` reports which stage is running.
 
         Degrades gracefully: if ffmpeg is unavailable it still runs on the
         transcript alone; frames are only used when the backend is multimodal.
         """
         from . import laughter as laughter_mod
         from . import video as video_mod
+
+        if n_frames is None:
+            # Each frame adds ~256 tokens of prefill; fewer frames is much
+            # faster on local hardware.
+            n_frames = int(os.environ.get("HUMOR_GENOME_FRAMES", "3"))
+
+        def _progress(msg: str) -> None:
+            if on_progress:
+                try:
+                    on_progress(msg)
+                except Exception:
+                    pass
 
         report = VideoHumorReport(source=os.path.basename(video_path))
         tmpdir = tempfile.mkdtemp(prefix="humor_video_")
@@ -445,6 +465,7 @@ class HumorGenomeEngine:
             report.duration_s = 0.0
 
         # 1) audio -> reaction timeline + loudness envelope
+        _progress("Extracting audio and detecting audience laughter…")
         try:
             wav = video_mod.extract_audio_wav(
                 video_path, os.path.join(tmpdir, "audio.wav")
@@ -457,6 +478,7 @@ class HumorGenomeEngine:
 
         # 2) frames for multimodal reasoning
         if want_frames:
+            _progress(f"Sampling {n_frames} frames for multimodal Gemma…")
             try:
                 frame_paths = video_mod.extract_frames(video_path, tmpdir, n=n_frames)
             except Exception:
@@ -499,6 +521,10 @@ class HumorGenomeEngine:
 
         raw = ""
         if frame_paths:
+            _progress(
+                f"Gemma is watching {len(frame_paths)} frames and explaining each "
+                "beat… (slowest step)"
+            )
             try:
                 raw = self.client.generate(
                     _build_prompt(True),
@@ -517,6 +543,7 @@ class HumorGenomeEngine:
 
         if not raw:
             # text-only path (no frames, or the vision call failed above)
+            _progress("Gemma is explaining each beat from the transcript…")
             report.multimodal_used = False
             raw = self.client.generate(
                 _build_prompt(False),
@@ -591,13 +618,13 @@ class HumorGenomeEngine:
             ][:3] or ["(no flat joke-beats recorded)"]
 
         # Feature: predicted-vs-actual laughter (the model's theory, tested)
-        if plain:
+        if plain and predict_laughs:
+            _progress("Predicting where laughs SHOULD land (blind to the crowd)…")
             try:
                 self._predict_and_compare(report, plain, cues, reactions)
             except Exception as exc:
                 report.notes.append(f"Laugh prediction skipped: {exc}")
-
-        else:
+        elif not plain:
             report.notes.append(
                 "No transcript provided, so predicted-vs-actual is unavailable "
                 "(it needs the words). The humor genome below is derived from the "
@@ -609,13 +636,16 @@ class HumorGenomeEngine:
         # Prefer the real transcript; otherwise fall back to the material Gemma
         # already described (beat moments + summary) so the radar/scores and
         # improvement suggestions still appear.
-        material = plain or self._material_from_beats(report)
-        if material:
-            try:
-                report.genome = self.analyze(material, audiences=DEFAULT_AUDIENCES)
-            except Exception as exc:
-                report.notes.append(f"Genome analysis skipped: {exc}")
+        if build_genome:
+            material = plain or self._material_from_beats(report)
+            if material:
+                _progress("Building the humor genome (radar, axes, audience fit)…")
+                try:
+                    report.genome = self.analyze(material, audiences=DEFAULT_AUDIENCES)
+                except Exception as exc:
+                    report.notes.append(f"Genome analysis skipped: {exc}")
 
+        _progress("Done.")
         return report
 
     @staticmethod

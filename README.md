@@ -191,7 +191,24 @@ Environment variables:
 - `HUMOR_GENOME_HF_MODEL` — default `google/gemma-3-4b-it`
 - `HUMOR_GENOME_HF_VISION_MODEL` — default `google/gemma-3-4b-it`
 - `HUMOR_GENOME_MAX_TOKENS` — default `2048` (video analysis uses at least `4096`)
+- `HUMOR_GENOME_TIMEOUT` — HTTP timeout in seconds, default `900`
+- `HUMOR_GENOME_FRAMES` — frames sent to the vision model, default `3` (`0` = skip)
+- `HUMOR_GENOME_KEEP_ALIVE` — keep the model resident between calls, default `10m`
 - `OLLAMA_HOST` — default `http://localhost:11434`
+
+### Video analysis is slow on local hardware
+
+One clip analysis makes up to **three sequential Gemma calls** — beats (with
+image frames), blind laugh prediction, and the humor genome. Image frames are by
+far the slowest part on CPU. If it takes too long or times out:
+
+- Open **⚡ Speed / quality settings** in the Clip tab and set **frames → 0**
+  (you keep the laugh timeline, beats and genome; only visual reasoning is lost).
+- Untick **Predicted vs. actual** and/or **Humor genome** to skip the extra calls.
+- Use a smaller model: `ollama pull gemma3:4b` +
+  `HUMOR_GENOME_OLLAMA_MODEL=gemma3:4b`.
+- Raise the ceiling: `HUMOR_GENOME_TIMEOUT=1800`.
+- A GPU makes the vision call dramatically faster than CPU-only inference.
 
 > The vision model defaults to **Gemma 3** because its image support is reliable
 > in Ollama and it doubles as the text model (one `ollama pull gemma3` covers
