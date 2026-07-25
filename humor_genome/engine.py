@@ -597,18 +597,34 @@ class HumorGenomeEngine:
             except Exception as exc:
                 report.notes.append(f"Laugh prediction skipped: {exc}")
 
-            # Feature: full humor genome of the clip's material (radar, axes,
-            # audience fit, punch-up) — same analysis as the text tab.
-            try:
-                report.genome = self.analyze(plain, audiences=DEFAULT_AUDIENCES)
-            except Exception as exc:
-                report.notes.append(f"Genome analysis skipped: {exc}")
         else:
             report.notes.append(
-                "Add a transcript to unlock predicted-vs-actual + the full humor genome."
+                "No transcript provided, so predicted-vs-actual is unavailable "
+                "(it needs the words). The humor genome below is derived from the "
+                "beats Gemma saw/heard — paste a transcript for a sharper read."
             )
 
+        # Feature: full humor genome of the clip's material (radar, axes,
+        # audience fit, punch-up) — same analysis as the text tab.
+        # Prefer the real transcript; otherwise fall back to the material Gemma
+        # already described (beat moments + summary) so the radar/scores and
+        # improvement suggestions still appear.
+        material = plain or self._material_from_beats(report)
+        if material:
+            try:
+                report.genome = self.analyze(material, audiences=DEFAULT_AUDIENCES)
+            except Exception as exc:
+                report.notes.append(f"Genome analysis skipped: {exc}")
+
         return report
+
+    @staticmethod
+    def _material_from_beats(report: VideoHumorReport) -> str:
+        """Reconstruct analyzable 'material' from a clip with no transcript."""
+        parts = [b.moment.strip() for b in report.beats if b.moment.strip()]
+        if not parts and report.overall_summary:
+            parts = [report.overall_summary]
+        return " ".join(parts).strip()
 
     # ------------------------------------------- predicted vs actual laughter
     def _predict_and_compare(
