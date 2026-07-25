@@ -1,90 +1,93 @@
-# Demo video script — "Why'd They Laugh?" (target: under 2:00)
+# 2-Minute Live Demo Script — "Why'd They Laugh?"
 
-Goal: show (1) the humor challenge, (2) the project in action, (3) how Gemma
-contributes. Screen-record the Streamlit app with real Gemma via Ollama if
-possible (`ollama run gemma3`, `ollama pull gemma3n`; falls back to mock if not).
-
-There are two things to show — the **text genome** and the **video "why did they
-laugh"** analysis. Two suggested cuts below: (A) balanced, (B) video-forward.
-Pick based on which demo looks best on the day.
+Spoken content is ~300 words (≈150 wpm = 2:00). **Bold** = say it. _Italic_ = do it.
 
 ---
 
-## 0:00–0:15 — The hook / the challenge
-> "Every joke is a bet: set an expectation, then break it. But the same joke
-> that kills at a comedy club dies in a corporate all-hands. So instead of
-> asking AI to *write* jokes, we asked Gemma the harder question — *why* do
-> people laugh, and *who* will?"
+## ⚠️ Before you present (do this 10 minutes early)
 
-Show the app title screen: **🎭 Why'd They Laugh?**
-
-## 0:15–0:35 — Analyze a joke
-- Pick the example **"Tech in-joke"** (dark mode joke).
-- Click **Analyze the genome**.
-- Talk over the spinner: "Gemma decomposes it into a *humor genome*."
-
-## 0:35–1:05 — Walk the genome
-- Point at **Setup → Expectation → Violation → Payoff**.
-  > "Gemma names the expectation it sets and exactly how the punchline breaks it."
-- Point at the **radar chart** (six axes).
-  > "Six axes — surprise, cleverness, edge, warmth — a fingerprint of the joke."
-- Point at **mechanisms** chips and **cultural assumptions**.
-
-## 1:05–1:30 — Audience fit (the key insight)
-- Scroll to **Audience fit**.
-  > "Here's the payoff: Gemma predicts the room. This lands with the tech crowd
-  > and gets a polite chuckle at a corporate all-hands — and it tells you *why*."
-- (Optional) quickly analyze the **"Deliberately weak"** pizza joke to show it
-  scoring low and explaining the flat setup. Great contrast beat.
-
-## 1:30–1:55 — Punch it up (understanding → action)
-- In **Punch it up**, choose an audience and click **Rewrite with Gemma**.
-  > "Because it knows the joke's weakest axes, Gemma rewrites it to land harder —
-  > and tells you which mechanism it changed."
-- Show the new line + "mechanism changed / why it's better."
-
-## 1:55–2:00 — Close
-> "Why'd They Laugh? turns Gemma's comedic intuition into something a writer can
-> actually collaborate with. Runs on Gemma via Ollama, HuggingFace, or a
-> zero-setup demo mode. Thanks!"
+1. Start Ollama and warm the model so it's resident:
+   `ollama run gemma3 "hi"` then `/bye`
+2. Launch the app: `streamlit run app.py`
+3. **Run the clip analysis BEFORE you go on.** Local inference takes minutes —
+   never wait for it live. Upload the clip, paste the transcript, hit Analyze,
+   and leave the finished result on screen.
+4. Have the **Joke tab** pre-loaded with one joke analyzed as a backup.
+5. Zoom the browser to ~110% so the timeline is readable from the back.
 
 ---
 
-## Cut B — video-forward (recommended if you have a good clip)
+## The script
 
-### 0:00–0:15 — Hook
-> "The one place humor has a real answer key is a live crowd — either they laugh
-> or they don't. So we asked Gemma to watch a comedy clip and explain the laughs."
+### 0:00 – 0:15 · The hook
+_Start on the finished Clip tab, timeline visible._
 
-### 0:15–0:30 — Text genome (fast)
-- Analyze one joke; point at the radar + **Audience fit**. Keep it to ~15s as
-  proof the engine understands structure.
+> **Every joke is a bet. You set an expectation, then you break it — and a room
+> either laughs or it doesn't. That makes comedy one of the only creative fields
+> with a real-time scoreboard. So instead of asking Gemma to write jokes, I asked
+> it a harder question: why did these people laugh?**
 
-### 0:30–1:00 — Upload a clip
-- Switch to the **🎬 Video clip** tab, upload a short stand-up/sitcom clip.
-- Talk over the spinner: "We pull the audio and detect exactly where the crowd
-  laughs, then send frames to multimodal **Gemma 3n**."
+### 0:15 – 0:35 · The laugh timeline
+_Point at the green waveform._
 
-### 1:00–1:35 — The reaction timeline + beats
-- Point at the **reaction timeline**: green = measured laughs, triangles = beats
-  (green landed / red flat).
-- Open one **LANDED** beat: "Gemma explains the mechanism and why it hit."
-- Open one **no-laugh** beat: "And here it tells us why the room stayed quiet."
+> **This is a stand-up crowd-work clip. I don't tell the app where the jokes are —
+> it listens. This green wave is the actual audience audio, and every shaded band
+> is a detected laugh. That's signal processing, no model needed. Now Gemma has
+> ground truth to reason against.**
 
-### 1:35–1:55 — What worked / fell flat
-- Show the summary + "what worked / what fell flat" columns.
-> "Because it's grounded in real laughter, this is humor *understanding* with an
-> answer key."
+### 0:35 – 1:05 · Click a beat
+_Click a green triangle, then a red one._
 
-### 1:55–2:00 — Close
-> "Text or video, Why'd They Laugh? uses Gemma to explain the funny. Thanks!"
+> **Each triangle is a comedic beat. Green landed, red died. Watch — I click, and
+> it jumps the video to that exact second and Gemma explains the mechanism: what
+> expectation the setup created, and how the punchline broke it.**
+
+_Click a red beat._
+
+> **And here's the useful part for a comic: this one got nothing, and Gemma tells
+> you why — and gives you a concrete fix.**
+
+### 1:05 – 1:35 · Predicted vs. actual · **the money shot**
+_Scroll to the purple diamonds / the matched-bombed-surprise cards._
+
+> **This is the part I'm proudest of. Gemma also reads the transcript blind — no
+> audio, no crowd — and predicts where the laughs should be. Those purple diamonds
+> are its theory. The green is what actually happened.**
+>
+> **The mismatches are the insight. A prediction over silence is a joke that
+> looked good on paper and bombed in the room. A real laugh it never predicted is
+> delivery — a face, a pause, a physical bit the words can't hold. That's the gap
+> between text and performance, measured.**
+
+### 1:35 – 1:50 · Genome + fixes
+_Scroll to the radar._
+
+> **It also scores the material across six axes — surprise, edge, warmth — with
+> audience-fit predictions for rooms you define, and rewrites weak lines on
+> request.**
+
+### 1:50 – 2:00 · Close
+> **Gemma does all the reasoning here. It runs fully local on Gemma 3. And it
+> turns "was that funny?" into something you can actually argue with. Thank you.**
 
 ---
 
-### Recording tips
-- Pre-load Ollama (`ollama run gemma3`, `ollama pull gemma3n`) before recording
-  for real outputs; the sidebar **Active backend** badge proves Gemma is in the loop.
-- Video needs `ffmpeg` installed. Use a clip with clear, audible audience laughter.
-- If short on time, the must-show beats are the **reaction timeline** and one
-  **LANDED** + one **no-laugh** beat explanation.
-- No clip handy? The reaction detection + mock still render the full UI.
+## If you're cut to 60 seconds
+Keep only: the hook (0:00), the laugh timeline (0:15), and **predicted vs.
+actual** (1:05). Drop the beat clicking and the radar.
+
+## Likely judge questions — quick answers
+
+- **"How is Gemma used?"** → Five jobs: structured genome JSON, audience
+  simulation, blind laugh prediction, punch-up rewrites, callback attribution.
+  No separate classifier — Gemma is the whole reasoning core.
+- **"Why Gemma 3?"** → Gemma 2 is text-only and can't see a clip. Gemma 3 is
+  multimodal and one `ollama pull` covers text and frames; Gemma 3n adds audio.
+- **"How do you detect laughter?"** → Sustained broadband energy bursts above the
+  speech baseline (numpy). Not a trained classifier — deliberately, so it runs
+  anywhere with zero setup.
+- **"What's the hardest part?"** → No ground truth for "funny." Our answer:
+  make the model commit to *reasons*, then test its predictions against real
+  laughter.
+- **"What would you do next?"** → Auto-transcription, a trained laughter
+  classifier, and per-beat A/B rewriting tested against future audiences.
