@@ -22,6 +22,12 @@ from .genome import (
     ReactionMoment,
     VideoBeat,
     VideoHumorReport,
+    PredictedLaugh,
+    LaughGap,
+    SetJoke,
+    StyleCluster,
+    CallbackLink,
+    SetReport,
 )
 
 __all__ = [
@@ -38,6 +44,12 @@ __all__ = [
     "ReactionMoment",
     "VideoBeat",
     "VideoHumorReport",
+    "PredictedLaugh",
+    "LaughGap",
+    "SetJoke",
+    "StyleCluster",
+    "CallbackLink",
+    "SetReport",
 ]
 
 __version__ = "0.1.0"

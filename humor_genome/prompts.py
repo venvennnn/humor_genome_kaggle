@@ -131,6 +131,62 @@ Rules:
 - Return ONLY the JSON object, nothing else."""
 
 
+def laugh_prediction_prompt(transcript: str, duration_s: float) -> str:
+    """Ask Gemma to predict where laughs SHOULD land, from the transcript alone.
+
+    Deliberately blind to the measured audience reactions — this is the model's
+    'theory of the joke', which we later test against reality.
+    """
+    return f"""You are reading the transcript of a ~{duration_s:.0f}-second comedy performance. You CANNOT hear the audience. Predict, from the words alone, exactly where the laughs SHOULD land and how big each should be.
+
+TRANSCRIPT:
+\"\"\"{transcript}\"\"\"
+
+Return ONLY a JSON object with EXACTLY these keys:
+{{
+  "predicted_laughs": [
+    {{
+      "time_s": <approximate seconds into the clip where the laugh lands; spread these across 0..{duration_s:.0f}>,
+      "quote": "the exact line that should trigger the laugh",
+      "expected_intensity": <0-1 how big a laugh you expect>,
+      "why": "why this line should get a laugh"
+    }}
+  ],
+  "prediction_summary": "1-2 sentences on the comedic rhythm you expect"
+}}
+
+Rules:
+- Base predictions ONLY on the text — do not assume anything about delivery or crowd.
+- Order predicted_laughs by time_s. Estimate times proportionally to where each line sits in the transcript.
+- Return ONLY the JSON object, nothing else."""
+
+
+def callback_prompt(bits_desc: str) -> str:
+    """Ask Gemma to find callbacks across a set and attribute their 'yield'."""
+    return f"""Below is an ORDERED list of bits from a stand-up set (index: text). Comedians often 'call back' to an earlier premise for a bigger laugh later. Find every callback and link it to the earlier bit whose premise it pays off.
+
+BITS:
+{bits_desc}
+
+Return ONLY a JSON object with EXACTLY these keys:
+{{
+  "callbacks": [
+    {{
+      "setup_index": <index of the earlier bit that planted the premise>,
+      "callback_index": <index of the later bit that pays it off>,
+      "note": "what premise is being called back and why it lands harder the second time",
+      "yield": <0-10 how much of the callback's laugh is owed to the earlier setup>
+    }}
+  ]
+}}
+
+Rules:
+- setup_index must be strictly less than callback_index.
+- Only include genuine callbacks (shared specific premise), not generic topic overlap.
+- If there are no callbacks, return an empty list.
+- Return ONLY the JSON object, nothing else."""
+
+
 def punchup_prompt(joke: str, audience: str, weak_axes: List[str]) -> str:
     """Prompt that asks Gemma to rewrite a joke for a target audience."""
     weak = ", ".join(weak_axes) if weak_axes else "overall punch"
