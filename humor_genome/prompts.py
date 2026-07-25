@@ -118,7 +118,8 @@ Return ONLY a JSON object with EXACTLY these keys:
       "is_joke": <true|false>,
       "landed": <true|false, grounded in the measured reactions>,
       "mechanism": "<comedic mechanism, e.g. misdirection/act-out/callback/taboo/absurdism>",
-      "explanation": "WHY it landed (what expectation was violated) or WHY it fell flat"
+      "explanation": "WHY it landed (what expectation was violated) or WHY it fell flat",
+      "improvement": "a concrete, specific fix to make this beat funnier (especially if it fell flat); empty string if it already kills"
     }}
   ],
   "what_worked": ["concrete reasons the laughs happened"],
@@ -128,6 +129,7 @@ Return ONLY a JSON object with EXACTLY these keys:
 Rules:
 - Ground "landed" in the measured reactions: a beat landed if a reaction occurs at/just after it.
 - If a beat is a joke but got no measured laugh, set landed=false and explain the likely reason (timing, unclear setup, wrong audience, cultural reference).
+- Use plain ASCII quotes (") only — never curly/smart quotes.
 - Return ONLY the JSON object, nothing else."""
 
 

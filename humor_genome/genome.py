@@ -8,7 +8,7 @@ depend on a stable schema regardless of which Gemma backend is used.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 # The six axes we score every joke on. These are the "genes" of the humor
@@ -175,6 +175,7 @@ class VideoBeat:
     audience_reaction: float = 0.0  # 0-10 measured reaction strength
     mechanism: str = ""         # comedic mechanism, if it is a joke
     explanation: str = ""       # WHY it landed or fell flat
+    improvement: str = ""       # a concrete fix (esp. for beats that fell flat)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -234,6 +235,8 @@ class VideoHumorReport:
     laugh_gaps: List[LaughGap] = field(default_factory=list)
     prediction_summary: str = ""
     prediction_hit_rate: float = 0.0  # fraction of predicted laughs that landed
+    # full humor genome of the clip's material (same analysis as the text tab)
+    genome: Optional["GenomeReport"] = None
     notes: List[str] = field(default_factory=list)  # warnings/diagnostics for the UI
     raw_model_output: str = ""
 

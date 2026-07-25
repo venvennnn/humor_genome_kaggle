@@ -50,17 +50,38 @@ DEFAULT_AUDIENCES = [
 ]
 
 
+def _normalize_smart_quotes(s: str) -> str:
+    """Convert typographic (curly) quotes/dashes to ASCII.
+
+    Instruction-tuned models very often emit “smart quotes” which are invalid
+    JSON syntax and silently break parsing. Curly quotes are never valid JSON
+    delimiters, so normalizing them is safe and fixes the common failure where a
+    stray ” is used to close a string value.
+    """
+    return (
+        s.replace("\u2018", "'").replace("\u2019", "'")
+        .replace("\u201c", '"').replace("\u201d", '"')
+        .replace("\u2013", "-").replace("\u2014", "-")
+        .replace("\u00a0", " ")
+    )
+
+
+def _strip_trailing_commas(s: str) -> str:
+    return re.sub(r",\s*([}\]])", r"\1", s)
+
+
 def _extract_json(text: str) -> dict:
     """Pull the first JSON object out of a model response.
 
-    Handles code fences and leading/trailing prose. Raises ValueError if no
-    parseable object is found.
+    Robust to code fences, leading/trailing prose, trailing commas, and smart
+    quotes. Falls back to the ``json_repair`` library when available. Raises
+    ValueError only if nothing parseable can be recovered.
     """
     if not text:
         raise ValueError("empty model response")
 
     # strip common markdown code fences
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     candidate = fenced.group(1) if fenced else None
 
     if candidate is None:
@@ -71,12 +92,30 @@ def _extract_json(text: str) -> dict:
             raise ValueError("no JSON object found in model response")
         candidate = text[start : end + 1]
 
+    # try a series of increasingly forgiving repairs
+    attempts = [
+        candidate,
+        _strip_trailing_commas(candidate),
+        _normalize_smart_quotes(candidate),
+        _strip_trailing_commas(_normalize_smart_quotes(candidate)),
+    ]
+    for attempt in attempts:
+        try:
+            return json.loads(attempt)
+        except json.JSONDecodeError:
+            continue
+
+    # optional heavy-duty repair (handles missing quotes, unescaped chars, …)
     try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        # last-ditch: remove trailing commas
-        cleaned = re.sub(r",\s*([}\]])", r"\1", candidate)
-        return json.loads(cleaned)
+        from json_repair import repair_json
+
+        obj = repair_json(_normalize_smart_quotes(candidate), return_objects=True)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    raise ValueError("could not parse JSON from model response")
 
 
 def _num(value, default: float = 0.0) -> float:
@@ -378,6 +417,7 @@ class HumorGenomeEngine:
                 landed=bool(b.get("landed", False)),
                 mechanism=str(b.get("mechanism", "")),
                 explanation=str(b.get("explanation", "")),
+                improvement=str(b.get("improvement", "")),
             )
             beat.audience_reaction = round(
                 10.0 * self._reaction_near(reactions, start_s, end_s), 1
@@ -390,9 +430,16 @@ class HumorGenomeEngine:
                 self._predict_and_compare(report, plain, cues, reactions)
             except Exception as exc:
                 report.notes.append(f"Laugh prediction skipped: {exc}")
+
+            # Feature: full humor genome of the clip's material (radar, axes,
+            # audience fit, punch-up) — same analysis as the text tab.
+            try:
+                report.genome = self.analyze(plain, audiences=DEFAULT_AUDIENCES)
+            except Exception as exc:
+                report.notes.append(f"Genome analysis skipped: {exc}")
         else:
             report.notes.append(
-                "Add a transcript to unlock predicted-vs-actual laughter analysis."
+                "Add a transcript to unlock predicted-vs-actual + the full humor genome."
             )
 
         return report
