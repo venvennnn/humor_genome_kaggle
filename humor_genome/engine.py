@@ -26,8 +26,21 @@ from .genome import (
     ReactionMoment,
     VideoBeat,
     VideoHumorReport,
+    PredictedLaugh,
+    LaughGap,
+    SetJoke,
+    StyleCluster,
+    CallbackLink,
+    SetReport,
 )
-from .prompts import SYSTEM_PROMPT, analysis_prompt, punchup_prompt, video_prompt
+from .prompts import (
+    SYSTEM_PROMPT,
+    analysis_prompt,
+    punchup_prompt,
+    video_prompt,
+    laugh_prediction_prompt,
+    callback_prompt,
+)
 
 DEFAULT_AUDIENCES = [
     "Close friends",
@@ -253,6 +266,8 @@ class HumorGenomeEngine:
 
         reactions: list[ReactionMoment] = []
         frame_paths: list[str] = []
+        env_t: list[float] = []
+        env_v: list[float] = []
         want_frames = self.client.supports_images and n_frames > 0
 
         try:
@@ -260,13 +275,14 @@ class HumorGenomeEngine:
         except Exception:
             report.duration_s = 0.0
 
-        # 1) audio -> reaction timeline
+        # 1) audio -> reaction timeline + loudness envelope
         try:
             wav = video_mod.extract_audio_wav(
                 video_path, os.path.join(tmpdir, "audio.wav")
             )
             waveform, rate = laughter_mod.read_wav_mono(wav)
             reactions = laughter_mod.detect_reactions(waveform, rate)
+            env_t, env_v = laughter_mod.reaction_envelope(waveform, rate)
         except Exception:
             reactions = []
 
@@ -278,7 +294,8 @@ class HumorGenomeEngine:
                 frame_paths = []
 
         # 3) transcript (SRT/VTT/plain)
-        plain, _cues = video_mod.parse_transcript(transcript)
+        plain, cues = video_mod.parse_transcript(transcript)
+        report.envelope_t, report.envelope_v = env_t, env_v
 
         report.reactions = reactions
         report.frames_analyzed = len(frame_paths)
@@ -367,7 +384,213 @@ class HumorGenomeEngine:
             )
             report.beats.append(beat)
 
+        # Feature: predicted-vs-actual laughter (the model's theory, tested)
+        if plain:
+            try:
+                self._predict_and_compare(report, plain, cues, reactions)
+            except Exception as exc:
+                report.notes.append(f"Laugh prediction skipped: {exc}")
+        else:
+            report.notes.append(
+                "Add a transcript to unlock predicted-vs-actual laughter analysis."
+            )
+
         return report
+
+    # ------------------------------------------- predicted vs actual laughter
+    def _predict_and_compare(
+        self, report: VideoHumorReport, transcript: str, cues, reactions
+    ) -> None:
+        raw = self.client.generate(
+            laugh_prediction_prompt(transcript, report.duration_s),
+            system=SYSTEM_PROMPT,
+        )
+        try:
+            data = _extract_json(raw)
+        except ValueError:
+            return
+
+        report.prediction_summary = str(data.get("prediction_summary", ""))
+
+        predicted: List[PredictedLaugh] = []
+        for p in data.get("predicted_laughs", []):
+            if not isinstance(p, dict):
+                continue
+            quote = str(p.get("quote", "")).strip()
+            t = _num(p.get("time_s"))
+            # if we have timed cues, snap the predicted time to the quoted line
+            if cues and quote:
+                t = self._time_of_quote(quote, cues, fallback=t)
+            predicted.append(
+                PredictedLaugh(
+                    time_s=round(t, 2),
+                    quote=quote,
+                    expected_intensity=max(0.0, min(1.0, _num(p.get("expected_intensity")))),
+                    why=str(p.get("why", "")),
+                )
+            )
+        predicted.sort(key=lambda x: x.time_s)
+        report.predicted_laughs = predicted
+
+        gaps, hit_rate = self._compare_laughs(predicted, reactions)
+        report.laugh_gaps = gaps
+        report.prediction_hit_rate = hit_rate
+
+    @staticmethod
+    def _time_of_quote(quote: str, cues, fallback: float = 0.0) -> float:
+        q = re.sub(r"[^a-z0-9 ]", "", quote.lower())[:40]
+        best_t, best_overlap = fallback, 0
+        for c in cues:
+            ct = re.sub(r"[^a-z0-9 ]", "", c.text.lower())
+            words = set(q.split())
+            overlap = sum(1 for w in words if w and w in ct)
+            if overlap > best_overlap:
+                best_overlap, best_t = overlap, c.start_s
+        return best_t
+
+    @staticmethod
+    def _compare_laughs(
+        predicted: List[PredictedLaugh], reactions, window: float = 4.0
+    ):
+        gaps: List[LaughGap] = []
+        used = set()
+        matched = 0
+        for p in predicted:
+            hit = None
+            for i, r in enumerate(reactions):
+                if i in used:
+                    continue
+                center = (r.start_s + r.end_s) / 2
+                if abs(center - p.time_s) <= window:
+                    hit = (i, r)
+                    break
+            if hit is not None:
+                used.add(hit[0])
+                matched += 1
+                gaps.append(LaughGap(
+                    time_s=p.time_s, kind="matched",
+                    predicted_intensity=p.expected_intensity,
+                    measured_intensity=hit[1].intensity,
+                    quote=p.quote,
+                    explanation="Predicted here and the crowd delivered.",
+                ))
+            else:
+                gaps.append(LaughGap(
+                    time_s=p.time_s, kind="bombed",
+                    predicted_intensity=p.expected_intensity,
+                    measured_intensity=0.0,
+                    quote=p.quote,
+                    explanation="The text reads funny, but the room was silent — "
+                    "a joke that bombed (delivery, timing, or wrong crowd?).",
+                ))
+        # measured reactions with no matching prediction = surprise laughs
+        for i, r in enumerate(reactions):
+            if i in used:
+                continue
+            gaps.append(LaughGap(
+                time_s=round((r.start_s + r.end_s) / 2, 2), kind="surprise",
+                predicted_intensity=0.0, measured_intensity=r.intensity,
+                explanation="A real laugh the text didn't predict — likely "
+                "delivery, an act-out, or physical comedy the transcript missed.",
+            ))
+        gaps.sort(key=lambda g: g.time_s)
+        hit_rate = round(matched / len(predicted), 3) if predicted else 0.0
+        return gaps, hit_rate
+
+    # --------------------------------------------------- set / special analysis
+    def analyze_set(
+        self, transcript: str, max_bits: int = 40, source: str = "set"
+    ) -> SetReport:
+        """Analyze a whole set: genome per bit, style clusters, trajectory,
+        and a setup->callback attribution graph.
+        """
+        from . import setsplit, clustering
+
+        report = SetReport(source=source)
+        bits = setsplit.split_into_bits(transcript, max_bits=max_bits)
+        if not bits:
+            report.notes.append("No bits could be parsed from the transcript.")
+            return report
+
+        for i, (text, t) in enumerate(bits):
+            try:
+                g = self.analyze(text, audiences=["General public"])
+                axes = {d.name: d.score for d in g.dimensions}
+                report.jokes.append(SetJoke(
+                    index=i, text=text, time_s=round(t, 2),
+                    funniness=g.funniness, mechanisms=g.mechanisms, axes=axes,
+                ))
+            except Exception as exc:
+                report.notes.append(f"Bit {i} failed: {exc}")
+
+        if not report.jokes:
+            return report
+
+        import numpy as np
+
+        x = np.array([j.vector(GENOME_AXES) for j in report.jokes], dtype=float)
+        k = clustering.suggest_k(len(report.jokes))
+        labels, centroids = clustering.kmeans(x, k)
+        coords = clustering.pca_2d(x)
+        report.pca_coords = [[round(float(a), 3), round(float(b), 3)] for a, b in coords]
+
+        for j, lab in zip(report.jokes, labels):
+            j.cluster = int(lab)
+
+        for lab in range(len(centroids)):
+            members = [j for j in report.jokes if j.cluster == lab]
+            if not members:
+                continue
+            cen = {a: round(float(centroids[lab][idx]), 2) for idx, a in enumerate(GENOME_AXES)}
+            dominant = sorted(cen, key=cen.get, reverse=True)[:2]
+            exemplar = max(members, key=lambda m: m.funniness)
+            report.clusters.append(StyleCluster(
+                label=lab,
+                name=" + ".join(a.capitalize() for a in dominant),
+                size=len(members),
+                centroid=cen,
+                dominant_axes=dominant,
+                exemplar=exemplar.text,
+                member_indices=[m.index for m in members],
+            ))
+
+        # callbacks / attribution
+        try:
+            self._detect_callbacks(report)
+        except Exception as exc:
+            report.notes.append(f"Callback detection skipped: {exc}")
+
+        report.summary = (
+            f"{len(report.jokes)} bits across {len(report.clusters)} style "
+            f"cluster(s); {len(report.callbacks)} callback link(s) detected."
+        )
+        return report
+
+    def _detect_callbacks(self, report: SetReport) -> None:
+        bits_desc = "\n".join(
+            f"{j.index}: {j.text[:160]}" for j in report.jokes
+        )
+        raw = self.client.generate(callback_prompt(bits_desc), system=SYSTEM_PROMPT)
+        try:
+            data = _extract_json(raw)
+        except ValueError:
+            return
+        by_index = {j.index: j for j in report.jokes}
+        for c in data.get("callbacks", []):
+            if not isinstance(c, dict):
+                continue
+            si = int(_num(c.get("setup_index"), -1))
+            ci = int(_num(c.get("callback_index"), -1))
+            if si not in by_index or ci not in by_index or si >= ci:
+                continue
+            report.callbacks.append(CallbackLink(
+                setup_index=si,
+                callback_index=ci,
+                setup_text=by_index[si].text,
+                callback_text=by_index[ci].text,
+                note=str(c.get("note", "")),
+                yield_value=max(0.0, min(10.0, _num(c.get("yield")))),
+            ))
 
     @staticmethod
     def _reaction_near(

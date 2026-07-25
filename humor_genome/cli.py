@@ -117,6 +117,31 @@ def _print_video_report(backend: str, report) -> None:
             print(f"  - {w}")
 
 
+def _print_set_report(backend: str, report) -> None:
+    print(f"[backend: {backend}]\n")
+    print("=" * 64)
+    print(f"SET: {report.source} — {report.summary}")
+    print("=" * 64)
+    for n in report.notes:
+        print(f"[note] {n}")
+
+    print("\nStyle clusters:")
+    for c in report.clusters:
+        print(f"  #{c.label} {c.name} (n={c.size}) dominant={', '.join(c.dominant_axes)}")
+        print(f"      e.g. \"{c.exemplar[:70]}\"")
+
+    if report.callbacks:
+        print("\nSetup → callback attribution:")
+        for cb in report.callbacks:
+            print(f"  bit {cb.setup_index} → bit {cb.callback_index}  yield {cb.yield_value}/10")
+            print(f"      {cb.note}")
+
+    print("\nBits:")
+    for j in report.jokes:
+        axes = " ".join(f"{a[:4]}={j.axes.get(a,0):.0f}" for a in ["surprise","edge","warmth"])
+        print(f"  {j.index:>2}. ({j.funniness:.1f}) [{axes}] {j.text[:70]}")
+
+
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="humor_genome",
@@ -129,6 +154,7 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--punchup", metavar="AUDIENCE", help="also punch up the joke for AUDIENCE")
     parser.add_argument("--video", metavar="PATH", help="analyze a comedy video clip instead of a joke")
     parser.add_argument("--transcript", metavar="PATH", help="transcript file (.txt/.srt/.vtt) for --video")
+    parser.add_argument("--set", dest="set_file", metavar="PATH", help="analyze a full set/special transcript (clusters + callbacks)")
     parser.add_argument("--json", action="store_true", help="emit JSON instead of pretty text")
     args = parser.parse_args(argv)
 
@@ -140,6 +166,24 @@ def main(argv: Optional[list] = None) -> int:
         return 0
 
     config = GemmaConfig(backend=args.backend) if args.backend else None
+
+    if args.set_file:
+        engine = HumorGenomeEngine(config=config)
+        try:
+            with open(args.set_file, "r", encoding="utf-8") as f:
+                transcript = f.read()
+        except OSError as e:
+            print(f"Could not read set transcript: {e}", file=sys.stderr)
+            return 2
+        report = engine.analyze_set(transcript)
+        if args.json:
+            print(json.dumps(
+                {"backend": engine.describe_backend(), "report": report.to_dict()},
+                indent=2,
+            ))
+        else:
+            _print_set_report(engine.describe_backend(), report)
+        return 0
 
     if args.video:
         engine = HumorGenomeEngine(config=config)

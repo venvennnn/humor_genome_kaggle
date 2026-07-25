@@ -50,6 +50,24 @@ didn't they?"**, grounded in the *actual audience reaction*:
    fell flat** — timing, unclear setup, wrong audience, or a cultural reference
    that didn't connect. An optional transcript (plain/`.srt`/`.vtt`) sharpens the
    alignment of jokes to laughs.
+4. **Interactive laugh timeline.** A synced video player sits over a laugh-
+   intensity waveform with each beat marked and colored by outcome; clicking a
+   beat seeks the video and shows Gemma's explanation.
+5. **Predicted vs. actual laughter — our strongest idea.** Gemma predicts where
+   laughs *should* land from the transcript **alone** (blind to the crowd); we
+   overlay that on the measured laughter. A predicted laugh over silence is a
+   **joke that bombed**; a real laugh the model missed reveals **delivery or
+   physical comedy** the text can't capture. This turns "AI describes a video"
+   into "the AI's theory of the joke, tested against reality."
+
+### Full set: style fingerprint + callback attribution
+
+Paste an entire special and it becomes exploratory data analysis of a
+comedian's craft: every bit's genome is extracted, the bits are **clustered**
+(numpy k-means + PCA) into distinct styles, a **trajectory heatmap** shows how
+the genome shifts across the set, and Gemma builds a **setup→callback attribution
+graph** — linking late payoffs to the early premises that seeded them, with an
+attributed "yield".
 
 It ships as a Streamlit app (text + video tabs), a CLI, and a small Python
 library, with a curated example set (including deliberately unfunny jokes to show

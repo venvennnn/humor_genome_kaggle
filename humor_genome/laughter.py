@@ -111,6 +111,29 @@ def detect_reactions(
     return reactions
 
 
+def reaction_envelope(
+    waveform: np.ndarray, rate: int, fps: float = 12.0
+) -> tuple:
+    """A smooth 0-1 loudness envelope across the whole clip for a waveform plot.
+
+    Returns (times, values). Downsampled to ~``fps`` points per second so it
+    renders as a clean laugh-intensity waveform under the video.
+    """
+    if rate <= 0 or waveform.size == 0:
+        return [], []
+    frame = max(1, int(rate / fps))
+    n = max(1, len(waveform) // frame)
+    trimmed = waveform[: n * frame].reshape(n, frame)
+    rms = np.sqrt(np.mean(trimmed**2, axis=1) + 1e-9)
+    # smooth a touch with a moving average
+    if n >= 5:
+        kernel = np.ones(5) / 5.0
+        rms = np.convolve(rms, kernel, mode="same")
+    rms_n = (rms - rms.min()) / (rms.max() - rms.min() + 1e-9)
+    times = (np.arange(n) * frame / rate).tolist()
+    return times, [round(float(v), 4) for v in rms_n]
+
+
 def laugh_coverage(reactions: List[ReactionMoment], duration_s: float) -> float:
     if duration_s <= 0:
         return 0.0

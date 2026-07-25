@@ -48,9 +48,37 @@ didn't they?"** grounded in the *actual audience reaction*:
 3. **Beat-by-beat reasoning** — Gemma splits the clip into comedic beats and,
    cross-referencing the *measured* laughs, explains **why each beat landed or
    fell flat** (timing, unclear setup, wrong audience, cultural reference).
+4. **Interactive laugh timeline** — a synced video player sits above a
+   laugh-intensity waveform; comedic beats are marked and colored by outcome
+   (landed / fell flat). **Click a beat** to jump the video there and read
+   Gemma's explanation in a side panel.
+5. **Predicted vs. actual laughter** *(the killer feature)* — Gemma also predicts
+   where laughs *should* land from the transcript **alone**, then we overlay that
+   against the measured laughter. The gaps are the story: a predicted laugh over
+   silence is a **joke that bombed**; a real laugh the model didn't predict is
+   **delivery or physical comedy** the text missed.
 
 Optionally paste a transcript (plain text, `.srt`, or `.vtt`) to align jokes to
-laughs precisely.
+laughs precisely and unlock predicted-vs-actual.
+
+### 🎤 Analyze a full set / special (transcript)
+
+Paste an entire set transcript and the engine turns it into exploratory data
+analysis of a comedian's craft:
+
+- **Style fingerprint** — every bit's humor genome is extracted and the bits are
+  **clustered** (numpy k-means + PCA) into distinct comedic styles.
+- **Set trajectory** — a heatmap shows how the genome shifts across the set (e.g.
+  opening warm/relatable to build trust, then pivoting to edge/surprise).
+- **Setup → callback attribution** — Gemma links later callbacks to the earlier
+  setups that seeded them, with an attributed "yield" (how much of the late laugh
+  the early premise earned), drawn as an arc graph.
+
+### 🎯 Custom audience personas
+
+Beyond the preset rooms, define your own (e.g. *"40-person corporate offsite,
+mixed seniority, HR present"*) and get the joke's predicted verdict against
+*that* specific room.
 
 ## Why this is interesting
 
@@ -143,6 +171,9 @@ python -m humor_genome.cli "your joke here" --punchup "Tech crowd" --json
 # analyze a comedy video clip (+ optional transcript)
 python -m humor_genome.cli --video clip.mp4 --transcript clip.srt
 
+# analyze a full set/special transcript (style clusters + callbacks)
+python -m humor_genome.cli --set special.txt
+
 # force a backend
 python -m humor_genome.cli --backend mock --list-examples
 ```
@@ -182,11 +213,14 @@ humor_genome/
   mock_brain.py            Deterministic offline stand-in for Gemma
   laughter.py              Audio audience-reaction detection (numpy)
   video.py                 ffmpeg frame/audio extraction + transcript parsing
+  clustering.py            numpy k-means + PCA for style fingerprints
+  setsplit.py              Split a set transcript into ordered bits
   data.py                  Loads the curated demo joke set
   cli.py                   Command-line interface
 examples/jokes.json        Curated demo jokes (incl. deliberately weak ones)
 tests/test_engine.py       Text-analysis tests (mock backend)
 tests/test_video.py        Reaction-detection + video tests (mock backend)
+tests/test_features.py     Clustering, splitting, prediction, set-analysis tests
 WRITEUP.md                 Kaggle writeup draft
 DEMO_SCRIPT.md             2-minute demo video script
 ```

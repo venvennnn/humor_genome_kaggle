@@ -279,8 +279,63 @@ def _mock_video(prompt: str) -> str:
     return json.dumps(payload)
 
 
+def _mock_prediction(prompt: str) -> str:
+    transcript = _extract_between(prompt, "TRANSCRIPT:")
+    m = re.search(r"~([\d.]+)-second", prompt)
+    duration = float(m.group(1)) if m else 60.0
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", transcript) if s.strip()]
+    preds = []
+    # treat every other sentence as a likely laugh line
+    candidates = sentences[::2] or sentences
+    n = max(1, len(candidates))
+    for i, s in enumerate(candidates):
+        t = round(duration * (i + 0.7) / n, 1)
+        preds.append({
+            "time_s": t,
+            "quote": s[:120],
+            "expected_intensity": round(0.4 + 0.5 * _stable_unit(s), 2),
+            "why": "[mock] Reads like a payoff line (turn at the end of the thought).",
+        })
+    return json.dumps({
+        "predicted_laughs": preds,
+        "prediction_summary": (
+            f"[mock] Expect roughly {len(preds)} laughs, paced across the clip. "
+            "Connect real Gemma for a genuine read of the rhythm."
+        ),
+    })
+
+
+def _mock_callbacks(prompt: str) -> str:
+    pairs = re.findall(r"^(\d+):\s*(.+)$", prompt, re.MULTILINE)
+    bits = [(int(i), t) for i, t in pairs]
+    stop = set("the a an and or but to of in on for with that this is are was were "
+               "i you it my me we they he she so about like just".split())
+
+    def keywords(text):
+        return {w for w in re.findall(r"[a-z']{5,}", text.lower()) if w not in stop}
+
+    callbacks = []
+    for ci, (cidx, ctext) in enumerate(bits):
+        ckw = keywords(ctext)
+        for sidx, stext in bits[:ci]:
+            shared = ckw & keywords(stext)
+            if shared:
+                callbacks.append({
+                    "setup_index": sidx,
+                    "callback_index": cidx,
+                    "note": f"[mock] Shares premise word(s): {', '.join(sorted(shared)[:3])}.",
+                    "yield": round(3 + 6 * _stable_unit(ctext + stext), 1),
+                })
+                break
+    return json.dumps({"callbacks": callbacks[:8]})
+
+
 def mock_response(prompt: str) -> str:
     """Route a prompt to the right mock generator based on its content."""
+    if '"predicted_laughs"' in prompt:
+        return _mock_prediction(prompt)
+    if '"callbacks"' in prompt:
+        return _mock_callbacks(prompt)
     if "comedy video clip" in prompt:
         return _mock_video(prompt)
     if "Rewrite the following joke" in prompt:
